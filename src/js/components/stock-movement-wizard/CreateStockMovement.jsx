@@ -3,6 +3,7 @@ import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import PropTypes from 'prop-types';
 import { Form } from 'react-final-form';
+import { confirmAlert } from 'react-confirm-alert';
 
 import TextField from '../form-elements/TextField';
 import SelectField from '../form-elements/SelectField';
@@ -269,7 +270,22 @@ class CreateStockMovement extends Component {
           return Promise.reject(new Error('Could not create stock movement'));
         });
     } else {
-      this.props.onSubmit(values);
+      confirmAlert({
+        title: 'Confirm data change',
+        message: 'Do you want to change stock movement data? ' +
+          'This can cause loss of your current work.',
+        buttons: [
+          {
+            label: 'No',
+            // TODO: onClick -> bring back data before changes
+          },
+          {
+            label: 'Yes',
+            // TODO: send new stockMovement values from step1 to backend
+            onClick: () => this.props.onSubmit(values),
+          },
+        ],
+      });
     }
   }
 
