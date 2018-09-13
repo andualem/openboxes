@@ -298,7 +298,7 @@ class EditItemsPage extends Component {
    * after sending createPicklist: 'true' to backend autopick functionality is invoked.
    * @public
    */
-  transitionToStep4() {
+  transitionToNextStep() {
     const url = `/openboxes/api/stockMovements/${this.state.values.stockMovementId}/status`;
     const payload = { status: 'PICKING', createPicklist: 'true' };
 
@@ -327,7 +327,7 @@ class EditItemsPage extends Component {
     this.reviseRequisitionItems(formValues)
       .then(() => {
         if (this.state.statusCode === 'VERIFYING' || this.state.redoAutopick) {
-          this.transitionToStep4()
+          this.transitionToNextStep()
             .then(() => this.props.onSubmit(formValues))
             .catch(() => this.props.hideSpinner());
         } else {
