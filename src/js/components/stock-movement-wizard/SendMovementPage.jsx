@@ -347,12 +347,8 @@ class SendMovementPage extends Component {
                 <table className="table table-striped text-center border">
                   <thead>
                     <tr>
-                      {(this.state.supplier) &&
-                        <th>Pallet</th>
-                      }
-                      {(this.state.supplier) &&
-                        <th>Box</th>
-                      }
+                      <th>Pallet</th>
+                      <th>Box</th>
                       <th>Code</th>
                       <th>Product Name</th>
                       <th>Lot number</th>
@@ -371,12 +367,8 @@ class SendMovementPage extends Component {
                       (item, index) =>
                         (
                           <tr key={index}>
-                            {(this.state.supplier) &&
-                              <td>{item.pallet}</td>
-                            }
-                            {(this.state.supplier) &&
-                              <td>{item.box}</td>
-                            }
+                            <td>{item.pallet}</td>
+                            <td>{item.box}</td>
                             <td>{item.productCode || item.product.productCode}</td>
                             <td className="text-left">
                               <span className="ml-4">{item['product.name'] || item.product.name}</span>
