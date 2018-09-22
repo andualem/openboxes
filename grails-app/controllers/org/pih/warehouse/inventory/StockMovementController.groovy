@@ -6,7 +6,7 @@
 * By using this software in any fashion, you are agreeing to be bound by
 * the terms of this license.
 * You must not remove this notice, or any other, from this software.
-**/ 
+**/
 
 package org.pih.warehouse.inventory
 
@@ -16,21 +16,73 @@ import org.pih.warehouse.api.StockMovementItem
 import org.pih.warehouse.core.Document
 import org.pih.warehouse.core.DocumentCommand
 import org.pih.warehouse.core.DocumentType
+import org.pih.warehouse.core.Location
+import org.pih.warehouse.core.Person
+import org.pih.warehouse.core.User
 import org.pih.warehouse.importer.ImportDataCommand
 import org.pih.warehouse.product.Product
 import org.pih.warehouse.requisition.Requisition
-import org.pih.warehouse.requisition.RequisitionItem
 import org.pih.warehouse.shipping.Shipment
+
+import java.text.DateFormat
+import java.text.SimpleDateFormat
 
 
 class StockMovementController {
 
     def dataService
     def stockMovementService
+    def requisitionService
 
 	def index = {
 		render(template: "/stockMovement/create")
 	}
+
+    def create = {
+        redirect(action: "index")
+    }
+
+    def show = {
+
+        StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
+
+        [stockMovement: stockMovement]
+
+    }
+
+    def list = {
+        User currentUser = User.get(session?.user?.id)
+        Location currentLocation = Location.get(session?.warehouse?.id)
+        params.origin = params.origin?:currentLocation
+        params.destination = params.destination?:currentLocation
+
+        Requisition requisition = new Requisition(params)
+        requisition.discard()
+        StockMovement stockMovement = new StockMovement()
+        if (params.q) {
+            stockMovement.identifier = "%" + params.q + "%"
+            stockMovement.name = "%" + params.q + "%"
+            stockMovement.description = "%" + params.q + "%"
+        }
+        stockMovement.requestedBy = requisition.requestedBy
+        stockMovement.origin = requisition.origin
+        stockMovement.destination = requisition.destination
+        stockMovement.statusCode = requisition?.status ? requisition?.status.toString() : null
+
+        def stockMovements = stockMovementService.getStockMovements(stockMovement, params.max?params.max as int:10, params.offset?params.offset as int:0)
+        def statistics = requisitionService.getRequisitionStatistics(requisition.origin, requisition.destination, currentUser)
+
+        render(view:"list", params:params, model:[stockMovements: stockMovements, statistics:statistics])
+
+    }
+
+    def shipments = {
+        StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
+        def shipments = Shipment.findAllByRequisition(stockMovement.requisition)
+
+
+        render(template: "/shipment/list", model: [shipments:shipments])
+    }
 
 
     def uploadDocument = { DocumentCommand command ->
@@ -66,6 +118,8 @@ class StockMovementController {
                     productName: it?.product?.name?:"",
                     palletName: it?.palletName?:"",
                     boxName: it?.boxName?:"",
+                    lotNumber: it?.lotNumber?:"",
+                    expirationDate: it?.expirationDate?it?.expirationDate?.format("MM/dd/yyyy"):"",
                     quantity: it?.quantityRequested?:"",
                     recipientId: it?.recipient?.id?:""
             ]
@@ -78,51 +132,37 @@ class StockMovementController {
 
 	def importCsv = { ImportDataCommand command ->
 
-        StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
-        Requisition requisition = stockMovement.requisition
+        try {
+            StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
+            Requisition requisition = stockMovement.requisition
 
-        def importFile = command.importFile
-        if (importFile.isEmpty()) {
-            throw new IllegalArgumentException("File cannot be empty")
+            def importFile = command.importFile
+            if (importFile.isEmpty()) {
+                throw new IllegalArgumentException("File cannot be empty")
+            }
+
+            if (importFile.fileItem.contentType != "text/csv") {
+                throw new IllegalArgumentException("File must be in CSV format")
+            }
+
+            String csv = new String(importFile.bytes)
+            def settings = [separatorChar: ',', skipLines: 1]
+            csv.toCsvReader(settings).eachLine { tokens ->
+
+                log.info "Tokens " + tokens.class
+                StockMovementItem stockMovementItem = StockMovementItem.createFromTokens(tokens)
+                stockMovementItem.stockMovement = stockMovement
+                stockMovement.lineItems.add(stockMovementItem)
+            }
+            stockMovementService.updateStockMovement(stockMovement)
+
+        } catch (Exception e) {
+            // FIXME The global error handler does not return JSON for multipart uploads
+            log.warn("Error occurred while importing CSV: " + e.message, e)
+            response.status = 500
+            render([errorCode: 500, errorMessage: e?.message?:"An unknown error occurred during import"] as JSON)
+            return
         }
-
-        if (importFile.fileItem.contentType != "text/csv") {
-            throw new IllegalArgumentException("File must be in CSV format")
-        }
-
-        String csv = new String(importFile.bytes)
-        def settings = [separatorChar:',', skipLines: 1]
-        csv.toCsvReader(settings).eachLine { tokens ->
-            log.info "tokens " + tokens
-            String requisitionItemId = tokens[0]
-            String productCode = tokens[1]
-            String productName = tokens[2]
-            String palletName = tokens[3]
-            String boxName = tokens[4]
-            Integer quantityRequested = tokens[5].toInteger()
-            String recipientId = tokens[6]
-
-            Product product = Product.findByProductCode(productCode)
-            RequisitionItem requisitionItem
-            if (requisitionItemId) {
-                requisitionItem = RequisitionItem.get(requisitionItemId)
-            }
-
-            if (!requisitionItem) {
-                requisitionItem = new RequisitionItem()
-                requisition.addToRequisitionItems(requisitionItem)
-            }
-
-            if (quantityRequested == 0) {
-                requisition.removeFromRequisitionItems(requisitionItem)
-            }
-            else {
-                requisitionItem.product = product
-                requisitionItem.quantity = quantityRequested
-            }
-            requisition.save()
-        }
-
 
         render([data: "Data will be imported successfully"] as JSON)
 	}

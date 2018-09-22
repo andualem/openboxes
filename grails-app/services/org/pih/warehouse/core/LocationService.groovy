@@ -162,7 +162,7 @@ class LocationService {
 
 	List getInternalLocations(Location parentLocation, LocationTypeCode[] locationTypeCodes, ActivityCode[] activityCodes) {
 
-		log.info "Get internal locations for parent ${parentLocation} with activity codes ${activityCodes}"
+		log.info "Get internal locations for parent ${parentLocation} with activity codes ${activityCodes} and location type codes ${locationTypeCodes}"
 		List<Location> internalLocations = Location.createCriteria().list() {
 			eq("active", Boolean.TRUE)
 			eq("parentLocation", parentLocation)
@@ -246,7 +246,7 @@ class LocationService {
 	}
 
 	List getRequestDestinations(Location currentLocation) {
-		return getLocationsSupportingActivity(ActivityCode.FULFILL_REQUEST)// - currentLocation
+		return getLocationsSupportingActivity(ActivityCode.RECEIVE_STOCK)// - currentLocation
 	}
 
 	List getTransactionSources(Location currentLocation) { 
