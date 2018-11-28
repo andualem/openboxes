@@ -6,19 +6,14 @@
 * By using this software in any fashion, you are agreeing to be bound by
 * the terms of this license.
 * You must not remove this notice, or any other, from this software.
-**/ 
+**/
 package org.pih.warehouse.api
 
 import grails.converters.JSON
 import org.codehaus.groovy.grails.web.json.JSONObject
-import org.pih.warehouse.core.Location
-import org.pih.warehouse.core.Person
-import org.pih.warehouse.receiving.Receipt
-import org.pih.warehouse.shipping.Shipment
+import org.pih.warehouse.core.Constants
+import org.pih.warehouse.product.Product
 import org.pih.warehouse.shipping.ShipmentItem
-
-import java.text.DateFormat
-import java.text.SimpleDateFormat
 
 class PartialReceivingApiController {
 
@@ -31,7 +26,7 @@ class PartialReceivingApiController {
     }
 
     def read = {
-        PartialReceipt partialReceipt = receiptService.getPartialReceipt(params.id)
+        PartialReceipt partialReceipt = receiptService.getPartialReceipt(params.id, params.stepNumber)
         render([data:partialReceipt] as JSON)
     }
 
@@ -41,30 +36,37 @@ class PartialReceivingApiController {
 
         log.info "JSON " + jsonObject.toString(4)
 
-        PartialReceipt partialReceipt = receiptService.getPartialReceipt(params.id)
+        PartialReceipt partialReceipt = receiptService.getPartialReceipt(params.id, params.stepNumber)
 
         bindPartialReceiptData(partialReceipt, jsonObject)
 
         if (partialReceipt.receiptStatus == PartialReceiptStatus.COMPLETED) {
             log.info "Save partial receipt"
-            receiptService.savePartialReceipt(partialReceipt)
+            receiptService.saveAndCompletePartialReceipt(partialReceipt)
             receiptService.saveInboundTransaction(partialReceipt)
-            partialReceipt = receiptService.getPartialReceipt(params.id)
         }
-        else if (partialReceipt.receiptStatus == PartialReceiptStatus.CHECKING) {
-            // do nothing for now
+        else if (partialReceipt.receiptStatus == PartialReceiptStatus.PENDING || partialReceipt.receiptStatus == PartialReceiptStatus.CHECKING) {
+            receiptService.savePartialReceipt(partialReceipt, false)
         }
         else if (partialReceipt.receiptStatus == PartialReceiptStatus.ROLLBACK) {
             receiptService.rollbackPartialReceipts(partialReceipt.shipment)
-            partialReceipt = receiptService.getPartialReceipt(params.id)
+            partialReceipt = receiptService.getPartialReceipt(params.id, params.stepNumber)
         }
 
 
         render([data:partialReceipt] as JSON)
     }
 
+    Date parseDate(String date) {
+        return date ? Constants.DELIVERY_DATE_FORMATTER.parse(date) : null
+    }
 
     void bindPartialReceiptData(PartialReceipt partialReceipt, JSONObject jsonObject) {
+
+        // Date is not bound properly using default JSON binding
+        if (jsonObject.containsKey("dateDelivered")) {
+            partialReceipt.dateDelivered = parseDate(jsonObject.remove("dateDelivered"))
+        }
 
         // Bind the partial receipt
         bindData(partialReceipt, jsonObject)
@@ -85,16 +87,24 @@ class PartialReceivingApiController {
             containerMap.shipmentItems.each { shipmentItemMap ->
 
                 // Find item if it exists
-                String shipmentItemId = shipmentItemMap.get("shipmentItem.id")
+                String shipmentItemId = shipmentItemMap.get("shipmentItemId")
+                String receiptItemId = shipmentItemMap.get("receiptItemId")
+                boolean newLine = Boolean.valueOf(shipmentItemMap.newLine ?: "false")
+                boolean originalLine = Boolean.valueOf(shipmentItemMap.originalLine ?: "false")
                 PartialReceiptItem partialReceiptItem = partialReceiptContainer.partialReceiptItems.find {
-                    it?.shipmentItem?.id == shipmentItemId
+                    receiptItemId ? it?.receiptItem?.id == receiptItemId : it?.shipmentItem?.id == shipmentItemId
                 }
                 // Create new item if not exists
-                if (!partialReceiptItem) {
+                if (!partialReceiptItem || newLine) {
                     partialReceiptItem = new PartialReceiptItem()
+                    partialReceiptItem.shipmentItem = ShipmentItem.get(shipmentItemId)
+                    partialReceiptItem.product = shipmentItemMap.get("product.id") ? Product.load(shipmentItemMap.get("product.id")) : null
+                    partialReceiptItem.isSplitItem = newLine
                     partialReceiptContainer.partialReceiptItems.add(partialReceiptItem)
                 }
                 bindData(partialReceiptItem, shipmentItemMap)
+
+                partialReceiptItem.shouldSave = newLine || originalLine || partialReceiptItem.quantityReceiving != null || partialReceiptItem.receiptItem
             }
         }
     }

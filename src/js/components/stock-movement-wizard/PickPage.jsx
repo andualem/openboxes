@@ -4,6 +4,9 @@ import { connect } from 'react-redux';
 import { Form } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
 import PropTypes from 'prop-types';
+import { confirmAlert } from 'react-confirm-alert';
+
+import 'react-confirm-alert/src/react-confirm-alert.css';
 
 import ArrayField from '../form-elements/ArrayField';
 import LabelField from '../form-elements/LabelField';
@@ -18,6 +21,7 @@ import ButtonField from '../form-elements/ButtonField';
 const FIELDS = {
   pickPageItems: {
     type: ArrayField,
+    virtualized: true,
     rowComponent: TableRowWithSubfields,
     subfieldKey: 'picklistItems',
     getDynamicRowAttr: ({ rowValues, subfield }) => {
@@ -44,7 +48,7 @@ const FIELDS = {
       },
       lotNumber: {
         type: LabelField,
-        flexWidth: '0.7',
+        flexWidth: '1.3',
         label: 'Lot #',
       },
       expirationDate: {
@@ -54,13 +58,13 @@ const FIELDS = {
       },
       'binLocation.name': {
         type: LabelField,
-        flexWidth: '0.7',
+        flexWidth: '1.2',
         label: 'Bin',
       },
       quantityRequired: {
         type: LabelField,
         label: 'Qty required',
-        flexWidth: '0.9',
+        flexWidth: '0.8',
         attributes: {
           formatValue: value => (value ? (value.toLocaleString('en-US')) : value),
         },
@@ -68,7 +72,7 @@ const FIELDS = {
       quantityPicked: {
         type: LabelField,
         label: 'Qty picked',
-        flexWidth: '0.9',
+        flexWidth: '0.7',
         attributes: {
           formatValue: value => (value ? (value.toLocaleString('en-US')) : value),
         },
@@ -82,14 +86,11 @@ const FIELDS = {
           title: 'Edit Pick',
         },
         getDynamicAttr: ({
-          fieldValue, selectedValue, subfield, stockMovementId,
-          checkForInitialPicksChanges, onResponse,
+          fieldValue, subfield, stockMovementId, onResponse,
         }) => ({
-          productCode: selectedValue,
           fieldValue,
           subfield,
           stockMovementId,
-          checkForInitialPicksChanges,
           btnOpenText: fieldValue.hasChangedPick ? '' : 'Edit',
           btnOpenClassName: fieldValue.hasChangedPick ? ' btn fa fa-check btn-outline-success' : 'btn btn-outline-primary',
           onResponse,
@@ -104,23 +105,22 @@ const FIELDS = {
           title: 'Adjust Inventory',
         },
         getDynamicAttr: ({
-          fieldValue, selectedValue, subfield, stockMovementId,
-          checkForInitialPicksChanges, onResponse,
+          fieldValue, subfield, stockMovementId, onResponse, bins, locationId,
         }) => ({
-          product: selectedValue,
           fieldValue,
           subfield,
           stockMovementId,
-          checkForInitialPicksChanges,
           btnOpenText: fieldValue.hasAdjustedInventory ? '' : 'Adjust',
           btnOpenClassName: fieldValue.hasAdjustedInventory ? ' btn fa fa-check btn-outline-success' : 'btn btn-outline-primary',
           onResponse,
+          bins,
+          locationId,
         }),
       },
       revert: {
         type: ButtonField,
         label: 'Undo',
-        flexWidth: '1',
+        flexWidth: '0.7',
         fieldKey: '',
         buttonLabel: 'Undo',
         getDynamicAttr: ({ fieldValue, revertUserPick, subfield }) => ({
@@ -145,7 +145,7 @@ class PickPage extends Component {
     super(props);
 
     this.state = {
-      statusCode: '',
+      bins: [],
       printPicksUrl: '',
       values: this.props.initialValues,
     };
@@ -167,22 +167,22 @@ class PickPage extends Component {
     this.props.showSpinner();
     this.fetchLineItems()
       .then((resp) => {
-        const { associations, statusCode } = resp.data.data;
+        const { associations } = resp.data.data;
         const { pickPageItems } = resp.data.data.pickPage;
 
-        const printPicks = _.find(associations.documents, doc => doc.name === 'Print Picklist');
+        const printPicks = _.find(
+          associations.documents,
+          doc => doc.documentType === 'PICKLIST' && doc.uri.includes('print'),
+        );
         this.setState({
-          printPicksUrl: printPicks.uri,
-          statusCode,
+          printPicksUrl: printPicks ? printPicks.uri : '/',
           values: { ...this.state.values, pickPageItems: [] },
         }, () => this.setState({
           values: {
             ...this.state.values,
             pickPageItems: this.checkForInitialPicksChanges(pickPageItems),
           },
-        }));
-
-        this.props.hideSpinner();
+        }, () => this.fetchBins()));
       })
       .catch(() => this.props.hideSpinner());
   }
@@ -192,7 +192,19 @@ class PickPage extends Component {
    * @public
    */
   refresh() {
-    this.fetchAllData();
+    confirmAlert({
+      title: 'Confirm refresh',
+      message: 'Are you sure you want to refresh? Your progress since last save will be lost.',
+      buttons: [
+        {
+          label: 'Yes',
+          onClick: () => this.fetchAllData(),
+        },
+        {
+          label: 'No',
+        },
+      ],
+    });
   }
 
   /**
@@ -210,7 +222,7 @@ class PickPage extends Component {
           // if yes -> compare quantityPicked of item in picklist with sugestion
           const pick = _.find(
             pickPageItem.picklistItems,
-            item => suggestion['inventoryItem.id'] === item['inventoryItem.id'],
+            item => (suggestion['inventoryItem.id']) === item['inventoryItem.id'] && (item['binLocation.id'] === suggestion['binLocation.id']),
           );
           if (_.isEmpty(pick) || (pick.quantityPicked !== suggestion.quantityPicked)) {
             initialPicks.push({
@@ -239,10 +251,27 @@ class PickPage extends Component {
   }
 
   /**
+   * Fetches available bin locations from API.
+   * @public
+   */
+  fetchBins() {
+    const url = `/openboxes/api/internalLocations?location.id=${this.state.values.origin.id}`;
+
+    return apiClient.get(url)
+      .then((response) => {
+        const bins = _.map(response.data.data, bin => (
+          { value: bin.id, label: bin.name, name: bin.name }
+        ));
+        this.setState({ bins }, () => this.props.hideSpinner());
+      })
+      .catch(() => this.props.hideSpinner());
+  }
+
+  /**
    * Transition to next stock movement status (PICKED).
    * @public
    */
-  transitionToStep5() {
+  transitionToNextStep() {
     const url = `/openboxes/api/stockMovements/${this.state.values.stockMovementId}/status`;
     const payload = { status: 'PICKED' };
 
@@ -256,13 +285,9 @@ class PickPage extends Component {
    */
   nextPage(formValues) {
     this.props.showSpinner();
-    if (this.state.statusCode === 'PICKING') {
-      this.transitionToStep5()
-        .then(() => this.props.onSubmit(formValues))
-        .catch(() => this.props.hideSpinner());
-    } else {
-      this.props.onSubmit(formValues);
-    }
+    this.transitionToNextStep()
+      .then(() => this.props.onSubmit(formValues))
+      .catch(() => this.props.hideSpinner());
   }
 
   /**
@@ -338,7 +363,7 @@ class PickPage extends Component {
             <span>
               <a
                 href={this.state.printPicksUrl}
-                className="float-right py-1 mb-1 btn btn-outline-secondary align-self-end ml-1"
+                className="float-right mb-1 btn btn-outline-secondary align-self-end ml-1 btn-xs"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -347,23 +372,24 @@ class PickPage extends Component {
               <button
                 type="button"
                 onClick={() => this.refresh()}
-                className="float-right py-1 mb-1 btn btn-outline-secondary align-self-end"
+                className="float-right  mb-1 btn btn-outline-secondary align-self-end btn-xs"
               >
-                <span><i className="fa fa-save pr-2" />Refresh</span>
+                <span><i className="fa fa-refresh pr-2" />Refresh</span>
               </button>
             </span>
             <form onSubmit={handleSubmit} className="print-mt">
               {_.map(FIELDS, (fieldConfig, fieldName) => renderFormField(fieldConfig, fieldName, {
-                  checkForInitialPicksChanges: this.checkForInitialPicksChanges,
                   stockMovementId: values.stockMovementId,
                   onResponse: this.saveNewItems,
                   revertUserPick: this.revertUserPick,
+                  bins: this.state.bins,
+                  locationId: this.state.values.origin.id,
                 }))}
               <div className="d-print-none">
-                <button type="button" className="btn btn-outline-primary btn-form" onClick={() => this.props.previousPage(values)}>
+                <button type="button" className="btn btn-outline-primary btn-form btn-xs" onClick={() => this.props.previousPage(values)}>
                     Previous
                 </button>
-                <button type="submit" className="btn btn-outline-primary btn-form float-right">Next</button>
+                <button type="submit" className="btn btn-outline-primary btn-form float-right btn-xs">Next</button>
               </div>
             </form>
           </div>

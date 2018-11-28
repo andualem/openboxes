@@ -21,7 +21,6 @@ const FIELDS = {
   },
   availableItems: {
     type: ArrayField,
-    disableVirtualization: true,
     fields: {
       lotNumber: {
         type: LabelField,
@@ -40,7 +39,7 @@ const FIELDS = {
         label: 'Qty available',
         fixedWidth: '150px',
         attributes: {
-          formatValue: value => (value.toLocaleString('en-US')),
+          formatValue: value => (value ? value.toLocaleString('en-US') : null),
         },
       },
       quantityPicked: {
@@ -61,6 +60,9 @@ function validate(values) {
   _.forEach(values.availableItems, (item, key) => {
     if (item.quantityPicked > item.quantityAvailable) {
       errors.availableItems[key] = { quantityPicked: 'Picked quantity is higher than available' };
+    }
+    if (item.quantityPicked < 0) {
+      errors.availableItems[key] = { quantityPicked: 'Picked quantity can\'t be negative' };
     }
   });
 
@@ -104,6 +106,16 @@ class EditPickModal extends Component {
     if (!this.props.reasonCodesFetched) {
       this.fetchData(this.props.fetchReasonCodes);
     }
+  }
+
+  componentWillReceiveProps(nextProps) {
+    const {
+      fieldConfig: { attributes, getDynamicAttr },
+    } = nextProps;
+    const dynamicAttr = getDynamicAttr ? getDynamicAttr(nextProps) : {};
+    const attr = { ...attributes, ...dynamicAttr };
+
+    this.setState({ attr });
   }
 
   /**

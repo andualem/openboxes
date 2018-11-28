@@ -42,7 +42,7 @@ class ModalWrapper extends Component {
       <div>
         <button
           type="button"
-          className={this.props.btnOpenClassName}
+          className={`btn-xs ${this.props.btnOpenClassName}`}
           style={this.props.btnOpenStyle}
           disabled={this.props.btnOpenDisabled}
           onClick={() => this.openModal()}
@@ -67,7 +67,7 @@ class ModalWrapper extends Component {
               initialValues={this.props.initialValues}
               validate={this.props.validate}
               mutators={{ ...arrayMutators }}
-              render={({ handleSubmit, invalid, values }) =>
+              render={({ handleSubmit, values }) =>
                 (
                   <form id="modalForm" onSubmit={handleSubmit}>
 
@@ -91,7 +91,7 @@ class ModalWrapper extends Component {
                         type="submit"
                         className={this.props.btnSaveClassName}
                         style={this.props.btnSaveStyle}
-                        disabled={this.props.btnSaveDisabled || invalid}
+                        disabled={this.props.btnSaveDisabled}
                       >
                         {this.props.btnSaveText}
                       </button>

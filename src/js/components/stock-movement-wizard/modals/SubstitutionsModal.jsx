@@ -14,17 +14,20 @@ import { showSpinner, hideSpinner, fetchReasonCodes } from '../../../actions';
 const FIELDS = {
   reasonCode: {
     type: SelectField,
-    label: 'Reason code',
+    label: 'Reason for not fulfilling full qty',
     attributes: {
       required: true,
     },
     getDynamicAttr: props => ({
       options: props.reasonCodes,
+      hidden: !props.originalItem,
     }),
   },
   substitutions: {
     type: ArrayField,
-    disableVirtualization: true,
+    getDynamicRowAttr: ({ rowValues }) => ({
+      className: rowValues.originalItem ? 'font-weight-bold' : '',
+    }),
     fields: {
       productCode: {
         type: LabelField,
@@ -43,7 +46,7 @@ const FIELDS = {
         label: 'Qty Available',
         fixedWidth: '150px',
         attributes: {
-          formatValue: value => (value.toLocaleString('en-US')),
+          formatValue: value => (value ? value.toLocaleString('en-US') : null),
         },
       },
       quantitySelected: {
@@ -61,14 +64,27 @@ const FIELDS = {
 function validate(values) {
   const errors = {};
   errors.substitutions = [];
+  let originalItem = null;
+  let subQty = 0;
 
   _.forEach(values.substitutions, (item, key) => {
+    if (item.originalItem) {
+      originalItem = item;
+    }
+    if (item.quantitySelected) {
+      subQty += _.toInteger(item.quantitySelected);
+    }
+
     if (item.quantitySelected > item.quantityAvailable) {
       errors.substitutions[key] = { quantitySelected: 'Selected quantity is higher than available' };
     }
+    if (item.quantitySelected < 0) {
+      errors.substitutions[key] = { quantitySelected: 'Selected quantity can\'t be negative' };
+    }
   });
 
-  if (!values.reasonCode) {
+  if (originalItem && originalItem.quantitySelected && subQty < originalItem.quantityRequested
+    && !values.reasonCode) {
     errors.reasonCode = 'This field is required';
   }
   return errors;
@@ -91,6 +107,7 @@ class SubstitutionsModal extends Component {
     this.state = {
       attr,
       formValues: {},
+      originalItem: null,
     };
 
     this.onOpen = this.onOpen.bind(this);
@@ -103,15 +120,38 @@ class SubstitutionsModal extends Component {
     }
   }
 
+  componentWillReceiveProps(nextProps) {
+    const {
+      fieldConfig: { attributes, getDynamicAttr },
+    } = nextProps;
+    const dynamicAttr = getDynamicAttr ? getDynamicAttr(nextProps) : {};
+    const attr = { ...attributes, ...dynamicAttr };
+
+    this.setState({ attr });
+  }
+
   /** Loads available substitutions for chosen item into modal's form.
    * @public
    */
   onOpen() {
+    this.state.attr.onOpen();
+    let substitutions = this.state.attr.lineItem.availableSubstitutions;
+    let originalItem = null;
+
+    if (_.toInteger(this.state.attr.lineItem.quantityAvailable) > 0) {
+      originalItem = { ...this.state.attr.lineItem, originalItem: true };
+      substitutions = [
+        originalItem,
+        ...this.state.attr.lineItem.availableSubstitutions,
+      ];
+    }
+
     this.setState({
       formValues: {
-        substitutions: this.state.attr.lineItem.availableSubstitutions,
-        reasonCode: '',
+        substitutions,
+        reasonCode: originalItem ? '' : 'SUBSTITUTION',
       },
+      originalItem,
     });
   }
 
@@ -122,14 +162,17 @@ class SubstitutionsModal extends Component {
   onSave(values) {
     this.props.showSpinner();
     const substitutions = _.filter(values.substitutions, sub => sub.quantitySelected > 0);
+    const subQty = _.reduce(values.substitutions, (sum, val) =>
+      (sum + (!val.originalItem ? _.toInteger(val.quantitySelected) : 0)), 0);
     const url = `/openboxes/api/stockMovements/${this.props.stockMovementId}?stepNumber=3`;
     const payload = {
       lineItems: _.map(substitutions, sub => ({
         id: this.state.attr.lineItem.requisitionItemId,
         substitute: 'true',
         'newProduct.id': sub.productId,
-        newQuantity: sub.quantitySelected,
-        reasonCode: values.reasonCode,
+        newQuantity: sub.originalItem ? sub.quantityRequested - subQty : sub.quantitySelected,
+        quantityRevised: sub.originalItem ? sub.quantitySelected : '',
+        reasonCode: sub.originalItem ? values.reasonCode : 'SUBSTITUTION',
       })),
     };
 
@@ -178,7 +221,10 @@ class SubstitutionsModal extends Component {
         fields={FIELDS}
         validate={validate}
         initialValues={this.state.formValues}
-        formProps={{ reasonCodes: this.props.reasonCodes }}
+        formProps={{
+          reasonCodes: this.props.reasonCodes,
+          originalItem: this.state.originalItem,
+        }}
         renderBodyWithValues={this.calculateSelected}
       >
         <div>

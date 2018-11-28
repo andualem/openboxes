@@ -2,14 +2,16 @@ package org.pih.warehouse.api
 
 import org.apache.commons.collections.FactoryUtils
 import org.apache.commons.collections.list.LazyList
+import org.codehaus.groovy.grails.commons.ConfigurationHolder
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.Person
 import org.pih.warehouse.order.Order
 import org.pih.warehouse.requisition.Requisition
-import org.pih.warehouse.requisition.RequisitionStatus
+import org.pih.warehouse.requisition.RequisitionItem
 import org.pih.warehouse.shipping.ReferenceNumber
 import org.pih.warehouse.shipping.Shipment
+import org.pih.warehouse.shipping.ShipmentStatusCode
 import org.pih.warehouse.shipping.ShipmentType
 
 enum StockMovementType {
@@ -45,11 +47,13 @@ class StockMovement {
     String trackingNumber
     String driverName
     String comments
+    String currentStatus
 
     StockMovementType stockMovementType
 
     PickPage pickPage
     EditPage editPage
+    PackPage packPage
 
     List<StockMovementItem> lineItems =
             LazyList.decorate(new ArrayList(), FactoryUtils.instantiateFactory(StockMovementItem.class));
@@ -91,8 +95,9 @@ class StockMovement {
                 destination: destination,
                 stocklist: [id: stocklist?.id, name: stocklist?.name],
                 dateRequested: dateRequested?.format("MM/dd/yyyy"),
-                dateShipped: dateShipped?.format("MM/dd/yyyy"),
+                dateShipped: dateShipped?.format("MM/dd/yyyy HH:mm XXX"),
                 shipmentType: shipmentType,
+                shipmentStatus: currentStatus,
                 trackingNumber: trackingNumber,
                 driverName: driverName,
                 comments: comments,
@@ -100,6 +105,7 @@ class StockMovement {
                 lineItems: lineItems,
                 pickPage: pickPage,
                 editPage: editPage,
+                packPage: packPage,
                 associations: [
                     requisition: [id: requisition?.id, requestNumber: requisition?.requestNumber, status: requisition?.status?.name()],
                     shipment: [id: shipment?.id, shipmentNUmber: shipment?.shipmentNumber, status: shipment?.currentStatus?.name()],
@@ -110,7 +116,7 @@ class StockMovement {
     }
 
     /**
-     * Return the status of the associated requisition.
+     * Return the requisition status of the stock movement.
      *
      * @return
      */
@@ -118,6 +124,15 @@ class StockMovement {
         return requisition?.status
     }
 
+    /**
+     * Return the receipt status of the associated stock movement.
+     *
+     * @return
+     */
+    ShipmentStatusCode getShipmentStatusCode() {
+        return shipment?.status?.code?:ShipmentStatusCode.PENDING
+
+    }
 
     /**
      * “FROM.TO.DATEREQUESTED.STOCKLIST.TRACKING#.DESCRIPTION”
@@ -125,11 +140,16 @@ class StockMovement {
      * @return
      */
     String generateName() {
-        String name = "${origin?.name}.${destination?.name}"
-        if (dateRequested) name += ".${dateRequested?.format("ddMMMyyyy")}"
-        if (stocklist?.name) name += ".${stocklist.name}"
-        if (trackingNumber) name += ".${trackingNumber}"
-        if (description) name += ".${description}"
+        final String separator =
+                ConfigurationHolder.config.openboxes.generateName.separator?:Constants.DEFAULT_NAME_SEPARATOR
+
+        String originIdentifier = origin?.locationNumber?:origin?.name
+        String destinationIdentifier = destination?.locationNumber?:destination?.name
+        String name = "${originIdentifier}${separator}${destinationIdentifier}"
+        if (dateRequested) name += "${separator}${dateRequested?.format("ddMMMyyyy")}"
+        if (stocklist?.name) name += "${separator}${stocklist.name}"
+        if (trackingNumber) name += "${separator}${trackingNumber}"
+        if (description) name += "${separator}${description}"
         name = name.replace(" ", "")
         return name
     }
@@ -157,15 +177,19 @@ class StockMovement {
                 shipmentType: shipment?.shipmentType,
                 dateShipped: shipment?.expectedShippingDate,
                 driverName: shipment?.driverName,
-                trackingNumber: trackingNumber?.identifier
+                trackingNumber: trackingNumber?.identifier,
+                currentStatus: shipment?.currentStatus,
         )
 
         // Include all requisition items except those that are substitutions or modifications because the
         // original requisition item will represent these changes
-        requisition.requisitionItems.each { requisitionItem ->
-            if (!requisitionItem.parentRequisitionItem) {
-                StockMovementItem stockMovementItem = StockMovementItem.createFromRequisitionItem(requisitionItem)
-                stockMovement.lineItems.add(stockMovementItem)
+        if (requisition.requisitionItems) {
+            SortedSet<RequisitionItem> requisitionItems = new TreeSet<RequisitionItem>(requisition.requisitionItems)
+            requisitionItems.each { requisitionItem ->
+                if (!requisitionItem.parentRequisitionItem) {
+                    StockMovementItem stockMovementItem = StockMovementItem.createFromRequisitionItem(requisitionItem)
+                    stockMovement.lineItems.add(stockMovementItem)
+                }
             }
         }
         return stockMovement
@@ -241,6 +265,20 @@ class EditPage {
     Map toJson() {
         return [
                 editPageItems: editPageItems
+        ]
+    }
+}
+
+class PackPage {
+    List<PackPageItem> packPageItems = []
+
+    static constraints = {
+        packPageItems(nullable:true)
+    }
+
+    Map toJson() {
+        return [
+                packPageItems: packPageItems
         ]
     }
 }

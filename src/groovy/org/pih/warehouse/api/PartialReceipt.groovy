@@ -44,9 +44,9 @@ class PartialReceipt {
     Map toJson() {
         return [
 
-                "receipt.id": receipt?.id,
+                "receiptId": receipt?.id,
                 receiptStatus: receiptStatus?.name(),
-                "shipment.id": shipment?.id,
+                "shipmentId": shipment?.id,
                 "shipment.name": shipment?.name,
                 "shipment.shipmentNumber": shipment.shipmentNumber,
                 shipmentStatus: shipment?.currentStatus?.name(),
@@ -54,9 +54,10 @@ class PartialReceipt {
                 "origin.name": shipment?.origin?.name,
                 "destination.id": shipment?.destination?.id,
                 "destination.name": shipment?.destination?.name,
-                dateShipped: shipment.actualShippingDate?.format("MM/dd/yyyy"),
-                dateDelivered: dateDelivered?.format("MM/dd/yyyy"),
-                containers: partialReceiptContainers
+                dateShipped: shipment.actualShippingDate?.format("MM/dd/yyyy HH:mm XXX"),
+                dateDelivered: dateDelivered?.format("MM/dd/yyyy HH:mm XXX"),
+                containers: partialReceiptContainers,
+                requisition: shipment?.requisition?.id
         ]
     }
 

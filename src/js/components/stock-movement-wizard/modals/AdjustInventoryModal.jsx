@@ -14,17 +14,25 @@ import apiClient from '../../../utils/apiClient';
 
 const FIELDS = {
   adjustInventory: {
-    addButton: 'Add new lot number',
+    // eslint-disable-next-line react/prop-types
+    addButton: ({ addRow, productId }) => (
+      <button
+        type="button"
+        className="btn btn-outline-success btn-xs"
+        onClick={() => addRow({ productId })}
+      >Add new lot number
+      </button>
+    ),
     type: ArrayField,
-    disableVirtualization: true,
     fields: {
-      'binLocation.name': {
+      binLocation: {
         type: SelectField,
         label: 'Bin',
         fieldKey: 'inventoryItem.id',
-        getDynamicAttr: ({ fieldValue, bins }) => ({
-          disabled: !!fieldValue,
+        getDynamicAttr: ({ fieldValue, bins, hasBinLocationSupport }) => ({
+          disabled: !!fieldValue || !hasBinLocationSupport,
           options: bins,
+          labelKey: 'name',
         }),
       },
       lotNumber: {
@@ -40,7 +48,7 @@ const FIELDS = {
         label: 'Expiry Date',
         fieldKey: 'inventoryItem.id',
         getDynamicAttr: ({ fieldValue }) => ({
-          dateFormat: 'YYYY/MM/DD',
+          dateFormat: 'MM/DD/YYYY',
           disabled: !!fieldValue,
         }),
       },
@@ -49,7 +57,7 @@ const FIELDS = {
         label: 'Previous Qty',
         fixedWidth: '150px',
         attributes: {
-          formatValue: value => (value.toLocaleString('en-US')),
+          formatValue: value => (value ? value.toLocaleString('en-US') : null),
         },
       },
       quantityAdjusted: {
@@ -68,6 +76,22 @@ const FIELDS = {
   },
 };
 
+function validate(values) {
+  const errors = {};
+  errors.adjustInventory = [];
+
+  _.forEach(values.adjustInventory, (item, key) => {
+    if (item.quantityAdjusted < 0) {
+      errors.adjustInventory[key] = { quantityAdjusted: 'Adjusted quantity can\'t be negative' };
+    }
+    if (!_.isNil(item.quantityAdjusted) && item.quantityAdjusted !== '' && !item.comments) {
+      errors.adjustInventory[key] = { comments: 'This field cannot be empty' };
+    }
+  });
+  return errors;
+}
+
+
 /** Modal window where user can adjust existing inventory or add a new one. */
 class AdjustInventoryModal extends Component {
   constructor(props) {
@@ -81,16 +105,20 @@ class AdjustInventoryModal extends Component {
 
     this.state = {
       attr,
-      bins: [],
       formValues: {},
     };
     this.onOpen = this.onOpen.bind(this);
     this.onSave = this.onSave.bind(this);
-    this.fetchBins = this.fetchBins.bind(this);
   }
 
-  componentDidMount() {
-    this.fetchBins();
+  componentWillReceiveProps(nextProps) {
+    const {
+      fieldConfig: { attributes, getDynamicAttr },
+    } = nextProps;
+    const dynamicAttr = getDynamicAttr ? getDynamicAttr(nextProps) : {};
+    const attr = { ...attributes, ...dynamicAttr };
+
+    this.setState({ attr });
   }
 
   /**
@@ -100,7 +128,13 @@ class AdjustInventoryModal extends Component {
   onOpen() {
     this.setState({
       formValues: {
-        adjustInventory: this.state.attr.fieldValue.availableItems,
+        adjustInventory: _.map(this.state.attr.fieldValue.availableItems, item => ({
+          ...item,
+          binLocation: {
+            id: item['binLocation.id'],
+            name: item['binLocation.name'],
+          },
+        })),
       },
     });
   }
@@ -113,14 +147,26 @@ class AdjustInventoryModal extends Component {
   onSave(values) {
     this.props.showSpinner();
 
-    const url = '/openboxes/api/stockAdjustments';
-    const payload = _.map(values.adjustInventory, adItem => ({
-      'inventoryItem.id': adItem['inventoryItem.id'] || '',
-      'binLocation.id': adItem['binLocation.id'] || '',
-      quantityAvailable: adItem.quantityAvailable,
-      quantityAdjusted: adItem.quantityAdjusted,
-      comments: adItem.comments,
-    }));
+    const url = `/openboxes/api/stockAdjustments?location.id=${this.props.locationId}`;
+    const items = _.filter(values.adjustInventory, item => !_.isNil(item.quantityAdjusted) && item.quantityAdjusted !== '');
+    const payload = _.map(items, (item) => {
+      if (!item['inventoryItem.id']) {
+        return {
+          productId: item.productId,
+          'binLocation.id': item.binLocation || '',
+          lotNumber: item.lotNumber,
+          expirationDate: item.expirationDate,
+          quantityAdjusted: parseInt(item.quantityAdjusted, 10),
+          comments: item.comments,
+        };
+      }
+      return {
+        'inventoryItem.id': item['inventoryItem.id'] || '',
+        'binLocation.id': item['binLocation.id'] || '',
+        quantityAdjusted: parseInt(item.quantityAdjusted, 10),
+        comments: item.comments,
+      };
+    });
 
     return apiClient.post(url, payload).then(() => {
       apiClient.get(`/openboxes/api/stockMovements/${this.state.attr.stockMovementId}?stepNumber=4`)
@@ -134,24 +180,6 @@ class AdjustInventoryModal extends Component {
     }).catch(() => { this.props.hideSpinner(); });
   }
 
-  /**
-   * Fetches available bin locations from API.
-   * @public
-   */
-  fetchBins() {
-    this.props.showSpinner();
-    const url = '/openboxes/api/internalLocations';
-
-    return apiClient.get(url)
-      .then((response) => {
-        const bins = _.map(response.data.data, bin => (
-          { value: bin.id, label: bin.name }
-        ));
-        this.setState({ bins }, () => this.props.hideSpinner());
-      })
-      .catch(() => this.props.hideSpinner());
-  }
-
   render() {
     if (this.state.attr.subfield) {
       return null;
@@ -163,14 +191,23 @@ class AdjustInventoryModal extends Component {
         onOpen={this.onOpen}
         onSave={this.onSave}
         fields={FIELDS}
+        validate={validate}
         initialValues={this.state.formValues}
-        formProps={{ bins: this.state.bins }}
+        formProps={{
+          bins: this.props.bins,
+          hasBinLocationSupport: this.props.hasBinLocationSupport,
+          productId: this.state.attr.fieldValue.productId,
+        }}
       />
     );
   }
 }
 
-export default connect(null, { showSpinner, hideSpinner })(AdjustInventoryModal);
+const mapStateToProps = state => ({
+  hasBinLocationSupport: state.session.currentLocation.hasBinLocationSupport,
+});
+
+export default connect(mapStateToProps, { showSpinner, hideSpinner })(AdjustInventoryModal);
 
 AdjustInventoryModal.propTypes = {
   /** Name of the field */
@@ -185,4 +222,14 @@ AdjustInventoryModal.propTypes = {
   hideSpinner: PropTypes.func.isRequired,
   /** Function updating page on which modal is located called when user saves changes */
   onResponse: PropTypes.func.isRequired,
+  /** Is true when currently selected location supports bins */
+  hasBinLocationSupport: PropTypes.bool.isRequired,
+  /** Available bin locations fetched from API. */
+  bins: PropTypes.arrayOf(PropTypes.shape({})),
+  /** Location ID (origin of stock movement). To be used in stockAdjustments request. */
+  locationId: PropTypes.string.isRequired,
+};
+
+AdjustInventoryModal.defaultProps = {
+  bins: [],
 };

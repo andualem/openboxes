@@ -112,7 +112,7 @@ class PutAwayCheckPage extends Component {
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Lot',
+      Header: 'Lot/Serial No.',
       accessor: 'inventoryItem.lotNumber',
       style: { whiteSpace: 'normal' },
       Filter,
@@ -186,7 +186,7 @@ class PutAwayCheckPage extends Component {
    */
   savePutAways() {
     this.props.showSpinner();
-    const url = '/openboxes/api/putaways';
+    const url = `/openboxes/api/putaways?location.id=${this.props.locationId}`;
     const payload = { ...this.state.putAway, putawayStatus: 'COMPLETED' };
 
     return apiClient.post(url, flattenRequest(payload))
@@ -219,18 +219,60 @@ class PutAwayCheckPage extends Component {
 
     return (
       <div className="container-fluid pt-2">
-        <h1>Put-Away - {this.state.putAway.putawayNumber}</h1>
-        <div className="mb-2">
-          Show by:
-          <button
-            className="btn btn-primary ml-2"
-            data-toggle="button"
-            aria-pressed="false"
-            onClick={toggleTree}
-          >
-            {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
-          </button>
-        </div>
+        <h1>Put Away - {this.state.putAway.putawayNumber}</h1>
+        {
+          this.state.completed ?
+            <div className="d-flex justify-content-between mb-2">
+              <div>
+                Show by:
+                <button
+                  className="btn btn-primary ml-2 btn-xs"
+                  data-toggle="button"
+                  aria-pressed="false"
+                  onClick={toggleTree}
+                >
+                  {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+                </button>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline-primary float-right mb-2 btn-xs"
+                onClick={() => this.props.firstPage()}
+              >Go back to put-away list
+              </button>
+            </div> :
+            <div className="d-flex justify-content-between mb-2">
+              <div>
+                Show by:
+                <button
+                  className="btn btn-primary ml-2 btn-xs"
+                  data-toggle="button"
+                  aria-pressed="false"
+                  onClick={toggleTree}
+                >
+                  {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+                </button>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => this.props.prevPage({
+                    putAway: this.props.putAway,
+                    pivotBy: this.state.pivotBy,
+                    expanded: this.state.expanded,
+                  })}
+                  className="btn btn-outline-primary mb-2 btn-xs mr-2"
+                >Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => this.savePutAways()}
+                  className="btn btn-outline-primary float-right mb-2 btn-xs"
+                >Complete Put Away
+                </button>
+              </div>
+            </div>
+        }
         {
           putAway.putawayItems ?
             <SelectTreeTable
@@ -255,11 +297,17 @@ class PutAwayCheckPage extends Component {
           this.state.completed ?
             <button
               type="button"
-              className="btn btn-outline-primary float-right my-2"
+              className="btn btn-outline-primary float-right my-2 btn-xs"
               onClick={() => this.props.firstPage()}
             >Go back to put-away list
             </button> :
             <div>
+              <button
+                type="button"
+                onClick={() => this.savePutAways()}
+                className="btn btn-outline-primary float-right my-2 btn-xs"
+              >Complete Put Away
+              </button>
               <button
                 type="button"
                 onClick={() => this.props.prevPage({
@@ -267,14 +315,8 @@ class PutAwayCheckPage extends Component {
                   pivotBy: this.state.pivotBy,
                   expanded: this.state.expanded,
                 })}
-                className="btn btn-outline-primary my-2"
+                className="btn btn-outline-primary float-right mr-2 my-2 btn-xs"
               >Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => this.savePutAways()}
-                className="btn btn-outline-primary float-right my-2"
-              >Complete Put Away
               </button>
             </div>
         }
@@ -303,6 +345,8 @@ PutAwayCheckPage.propTypes = {
   pivotBy: PropTypes.arrayOf(PropTypes.string),
   /** List of currently expanded put-away's items */
   expanded: PropTypes.shape({}),
+  /** Location ID (currently chosen). To be used in internalLocations and putaways requests. */
+  locationId: PropTypes.string.isRequired,
 };
 
 PutAwayCheckPage.defaultProps = {

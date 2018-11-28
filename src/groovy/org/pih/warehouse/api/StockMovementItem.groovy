@@ -27,7 +27,11 @@ class StockMovementItem {
     BigDecimal quantityRevised
     BigDecimal quantityCanceled
     BigDecimal quantityPicked
+    BigDecimal quantityShipped
 
+    String shipmentItemId
+
+    List<StockMovementItem> splitLineItems = []
     List<StockMovementItem> substitutionItems = []
 
     // Actions
@@ -152,10 +156,17 @@ class StockMovementItem {
 
     static StockMovementItem createFromRequisitionItem(RequisitionItem requisitionItem) {
 
-        List<StockMovementItem> substitutionItems = requisitionItem?.substitutionItems ?
-                requisitionItem.substitutionItems.collect {
-            return StockMovementItem.createFromRequisitionItem(it)
-        } : []
+        List<StockMovementItem> substitutionItems = []
+
+        if (requisitionItem.substitutionItem) {
+            substitutionItems.push(StockMovementItem.createFromRequisitionItem(requisitionItem.substitutionItem))
+        }
+        else if (requisitionItem.substitutionItems) {
+            substitutionItems = requisitionItem?.substitutionItems ?
+                    requisitionItem.substitutionItems.collect {
+                return StockMovementItem.createFromRequisitionItem(it)
+            } : []
+        }
 
         return new StockMovementItem(
                 id: requisitionItem.id,
@@ -172,7 +183,7 @@ class StockMovementItem {
                 substitutionItems: substitutionItems,
                 reasonCode: requisitionItem.cancelReasonCode,
                 comments: requisitionItem.cancelComments,
-                recipient: requisitionItem.recipient,
+                recipient: requisitionItem.recipient?:requisitionItem?.parentRequisitionItem?.recipient,
                 palletName: requisitionItem?.palletName?:"",
                 boxName: requisitionItem?.boxName?:"",
                 lotNumber: requisitionItem?.lotNumber?:"",
@@ -251,7 +262,7 @@ class AvailableItem {
                 "product.name"    : inventoryItem?.product?.name,
                 "productCode"     : inventoryItem?.product?.productCode,
                 lotNumber         : inventoryItem?.lotNumber,
-                expirationDate    : inventoryItem?.expirationDate,
+                expirationDate    : inventoryItem?.expirationDate?.format("MM/dd/yyyy"),
                 "binLocation.id"  : binLocation?.id,
                 "binLocation.name": binLocation?.name,
                 quantityAvailable : quantityAvailable,
@@ -311,17 +322,6 @@ class SubstitutionItem {
                 quantityRequested : quantitySelected
         ]
     }
-
-
-    static SubstitutionItem createFromRequisitionItem(RequisitionItem requisitionItem) {
-        SubstitutionItem substitutionItem = new SubstitutionItem()
-        substitutionItem.productId = requisitionItem?.product?.id
-        substitutionItem.productName = requisitionItem?.product?.name
-        substitutionItem.productCode = requisitionItem?.product?.productCode
-        substitutionItem.quantitySelected = requisitionItem?.quantity
-        return substitutionItem
-    }
-
 }
 
 enum SubstitutionStatusCode {
@@ -360,9 +360,12 @@ class EditPageItem {
     Integer quantityRequested
     //Integer quantityAvailable
     Integer quantityConsumed
+    Integer totalMonthlyQuantity
+    Integer sortOrder
 
     List<AvailableItem> availableItems
     List<SubstitutionItem> availableSubstitutions
+    List<SubstitutionItem> substitutionItems
 
     Integer getQuantityAvailable() {
         availableItems ? availableItems.sum { it.quantityAvailable } : null
@@ -388,13 +391,6 @@ class EditPageItem {
         return availableSubstitutions ? availableSubstitutions?.collect { it.minExpirationDate }?.min() : null
     }
 
-    List<SubstitutionItem> getSubstitutionItems() {
-        return requisitionItem?.substitutionItems ?
-                requisitionItem?.substitutionItems?.collect { RequisitionItem requsitionItem ->
-                    SubstitutionItem.createFromRequisitionItem(requsitionItem) } :
-                null
-    }
-
     Boolean hasEarlierExpirationDate() {
         Date productExpirationDate = getMinExpirationDate()
         Date substitutionExpirationDate = getMinExpirationDateForSubstitutionItems()
@@ -408,27 +404,29 @@ class EditPageItem {
             return SubstitutionStatusCode.EARLIER
         }
         else {
-            return (!availableSubstitutions?.empty) ? SubstitutionStatusCode.YES : SubstitutionStatusCode.NO
+            return (!availableSubstitutions?.empty && availableSubstitutions.sum { it.quantityAvailable } > 0) ? SubstitutionStatusCode.YES : SubstitutionStatusCode.NO
         }
     }
 
     Map toJson() {
         return [
-                requisitionItemId: requisitionItem.id,
-                statusCode       : requisitionItem.status.name(),
-                reasonCode       : requisitionItem?.cancelReasonCode,
-                comments         : requisitionItem?.cancelComments,
-                productId        : productId,
-                productCode      : productCode,
-                productName      : productName,
-                minExpirationDate: minExpirationDate?.format("MM/dd/yyyy"),
-                quantityRequested: quantityRequested,
-                quantityRevised  : quantityRevised,
-                quantityConsumed : quantityConsumed,
-                quantityAvailable: quantityAvailable,
+                requisitionItemId     : requisitionItem.id,
+                statusCode            : requisitionItem.status.name(),
+                reasonCode            : requisitionItem?.cancelReasonCode,
+                comments              : requisitionItem?.cancelComments,
+                productId             : productId,
+                productCode           : productCode,
+                productName           : productName,
+                minExpirationDate     : minExpirationDate?.format("MM/dd/yyyy"),
+                quantityRequested     : quantityRequested,
+                quantityRevised       : quantityRevised,
+                quantityConsumed      : quantityConsumed,
+                quantityAvailable     : quantityAvailable,
+                totalMonthlyQuantity  : totalMonthlyQuantity,
                 substitutionStatus    : substitutionStatusCode,
                 availableSubstitutions: availableSubstitutions,
-                substitutionItems     : substitutionItems
+                substitutionItems     : substitutionItems,
+                sortOrder             : sortOrder
         ]
     }
 }
@@ -438,6 +436,7 @@ class PickPageItem {
     RequisitionItem requisitionItem
     InventoryItem inventoryItem
     Location binLocation
+    Integer sortOrder
 
     Set<PicklistItem> picklistItems = []
     Set<AvailableItem> availableItems = []
@@ -451,6 +450,7 @@ class PickPageItem {
                 "requisitionItem.id": requisitionItem?.id,
                 "product.name"      : requisitionItem?.product?.name,
                 productCode         : requisitionItem?.product?.productCode,
+                productId           : requisitionItem?.product?.id,
                 reasonCode          : requisitionItem?.cancelReasonCode,
                 comments            : requisitionItem?.cancelComments,
                 quantityRequested   : requisitionItem.quantity,
@@ -464,6 +464,7 @@ class PickPageItem {
                 suggestedItems      : suggestedItems,
                 picklistItems       : picklistItems,
                 recipient           : requisitionItem?.recipient,
+                sortOrder           : sortOrder,
         ]
     }
 
@@ -515,4 +516,49 @@ class PickPageItem {
         return new PickPageItem(requisitionItem: requisitionItem)
     }
 
+}
+
+class PackPageItem {
+    ShipmentItem shipmentItem
+    String palletName
+    String boxName
+    Integer sortOrder
+
+    String shipmentItemId
+    Person recipient
+    Integer quantityShipped
+    List<PackPageItem> splitLineItems
+
+    Map toJson() {
+        return [
+                shipmentItemId    : shipmentItem?.id,
+                "product.id"      : shipmentItem?.product?.id,
+                productName       : shipmentItem?.product?.name,
+                productCode       : shipmentItem?.product?.productCode,
+                lotNumber         : shipmentItem?.lotNumber,
+                expirationDate    : shipmentItem?.expirationDate?.format("MM/dd/yyyy"),
+                binLocationName   : shipmentItem?.binLocation?.name,
+                uom               : shipmentItem?.product?.unitOfMeasure,
+                quantityShipped   : shipmentItem?.quantity,
+                recipient         : shipmentItem?.recipient,
+                palletName        : palletName,
+                boxName           : boxName,
+                sortOrder         : sortOrder,
+        ]
+    }
+
+    boolean equals(o) {
+        if (this.is(o)) return true
+        if (getClass() != o.class) return false
+
+        PackPageItem that = (PackPageItem) o
+
+        if (shipmentItem?.id != that.shipmentItem?.id) return false
+
+        return true
+    }
+
+    int hashCode() {
+        return (shipmentItem?.id != null ? shipmentItem?.id?.hashCode() : 0)
+    }
 }

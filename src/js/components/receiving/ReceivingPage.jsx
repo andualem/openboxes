@@ -5,7 +5,6 @@ import PropTypes from 'prop-types';
 import { Form } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
 import moment from 'moment';
-import Alert from 'react-s-alert';
 
 import PartialReceivingPage from './PartialReceivingPage';
 import ReceivingCheckScreen from './ReceivingCheckScreen';
@@ -14,15 +13,28 @@ import { showSpinner, hideSpinner } from '../../actions';
 
 function validate(values) {
   const errors = {};
+  errors.containers = [];
 
   if (!values.dateDelivered) {
     errors.dateDelivered = 'This field is required';
   } else {
-    const date = moment(values.dateDelivered, 'MM/DD/YYYY');
-    if (moment().diff(date) < 0) {
+    const dateDelivered = moment(values.dateDelivered, 'MM/DD/YYYY HH:mm Z');
+    if (moment().diff(dateDelivered) < 0) {
       errors.dateDelivered = 'The date cannot be in the future';
     }
+    const dateShipped = values.dateShipped ? moment(values.dateShipped, 'MM/DD/YYYY HH:mm Z') : null;
+    if (dateShipped && dateDelivered < dateShipped) {
+      errors.dateDelivered = 'The date cannot be before shipment date';
+    }
   }
+  _.forEach(values.containers, (container, key) => {
+    errors.containers[key] = { shipmentItems: [] };
+    _.forEach(container.shipmentItems, (item, key2) => {
+      if (item.quantityReceiving < 0) {
+        errors.containers[key].shipmentItems[key2] = { quantityReceiving: 'Quantity to receive can\'t be negative' };
+      }
+    });
+  });
 
   return errors;
 }
@@ -37,6 +49,8 @@ class ReceivingPage extends Component {
       bins: [],
       formData: {},
       completed: false,
+      locationId: '',
+      stockMovementIdentifier: '',
     };
 
     this.nextPage = this.nextPage.bind(this);
@@ -58,8 +72,19 @@ class ReceivingPage extends Component {
     if (this.state.page === 0) {
       const containers = _.map(formValues.containers, container => ({
         ...container,
-        shipmentItems: _.filter(container.shipmentItems, item => !_.isNil(item.quantityReceiving) && item.quantityReceiving !== ''),
+        shipmentItems: _.chain(container.shipmentItems)
+          .map((item) => {
+            if (item.receiptItemId) {
+              return {
+                ...item, quantityReceiving: item.quantityReceiving ? item.quantityReceiving : 0,
+              };
+            }
+
+            return item;
+          })
+          .filter(item => !_.isNil(item.quantityReceiving) && item.quantityReceiving !== '').value(),
       }));
+
       const payload = {
         ...formValues, receiptStatus: 'CHECKING', containers: _.filter(containers, container => container.shipmentItems.length),
       };
@@ -68,7 +93,8 @@ class ReceivingPage extends Component {
     } else {
       this.save({ ...formValues, receiptStatus: 'COMPLETED' }, () => {
         this.setState({ completed: true });
-        Alert.success('Shipment was received successfully!');
+        const { requisition } = formValues;
+        window.location = `/openboxes/stockMovement/show/${requisition}`;
       });
     }
   }
@@ -102,7 +128,7 @@ class ReceivingPage extends Component {
   */
   save(formValues, callback) {
     this.props.showSpinner();
-    const url = `/openboxes/api/partialReceiving/${this.props.match.params.shipmentId}`;
+    const url = `/openboxes/api/partialReceiving/${this.props.match.params.shipmentId}?stepNumber=${this.state.page + 1}`;
 
     return apiClient.post(url, flattenRequest(formValues))
       .then((response) => {
@@ -122,7 +148,7 @@ class ReceivingPage extends Component {
    * @public
    */
   nextPage() {
-    this.setState({ page: this.state.page + 1 });
+    this.setState({ page: this.state.page + 1 }, () => this.fetchPartialReceiptCandidates());
   }
 
   /**
@@ -130,7 +156,8 @@ class ReceivingPage extends Component {
    * @public
    */
   prevPage() {
-    this.setState({ page: this.state.page - 1, completed: false });
+    this.setState({ page: this.state.page - 1, completed: false }, () =>
+      this.fetchPartialReceiptCandidates());
   }
 
   /**
@@ -139,12 +166,19 @@ class ReceivingPage extends Component {
    */
   fetchPartialReceiptCandidates() {
     this.props.showSpinner();
-    const url = `/openboxes/api/partialReceiving/${this.props.match.params.shipmentId}`;
+    const url = `/openboxes/api/partialReceiving/${this.props.match.params.shipmentId}?stepNumber=${this.state.page + 1}`;
 
     return apiClient.get(url)
       .then((response) => {
-        this.setState({ formData: parseResponse(response.data.data) });
-        this.fetchBins();
+        const formData = parseResponse(response.data.data);
+        this.setState({
+          formData: {},
+          locationId: formData.destination.id,
+          stockMovementIdentifier: formData.shipment.shipmentNumber,
+        }, () => {
+          this.fetchBins();
+          this.setState({ formData });
+        });
       })
       .catch(() => this.props.hideSpinner());
   }
@@ -154,7 +188,7 @@ class ReceivingPage extends Component {
    * @public
    */
   fetchBins() {
-    const url = '/openboxes/api/internalLocations';
+    const url = `/openboxes/api/internalLocations/receiving?location.id=${this.state.locationId}&stockMovementIdentifier=${this.state.stockMovementIdentifier}`;
 
     return apiClient.get(url)
       .then((response) => {
@@ -167,29 +201,37 @@ class ReceivingPage extends Component {
   }
 
   render() {
-    const { page, formData } = this.state;
+    const { page, formData, locationId } = this.state;
 
-    return (
-      <Form
-        onSubmit={values => this.onSubmit(values)}
-        validate={validate}
-        mutators={{ ...arrayMutators }}
-        initialValues={formData}
-        render={({ handleSubmit, values, form }) => (
-          <div>
-            {values.shipment && values.shipment.shipmentNumber &&
-              <h2 className="my-2 text-center">{`${values.shipment.shipmentNumber} ${values.shipment.name}`}</h2>}
-            <div className="align-self-center">
-              <form onSubmit={handleSubmit}>
-                {this.getFormList({
-                  formValues: values, change: form.change,
-                })[page]}
-              </form>
+    if (locationId) {
+      return (
+        <Form
+          onSubmit={values => this.onSubmit(values)}
+          validate={validate}
+          mutators={{ ...arrayMutators }}
+          initialValues={formData}
+          render={({ handleSubmit, values, form }) => (
+            <div>
+              {values.shipment && values.shipment.shipmentNumber &&
+              <h2 className="my-2 text-center">
+                {`${values.shipment.shipmentNumber} ${values.shipment.name}`}
+              </h2>}
+              <div className="align-self-center">
+                <form onSubmit={handleSubmit}>
+                  {this.getFormList({
+                    formValues: values,
+                    change: form.change,
+                    locationId,
+                  })[page]}
+                </form>
+              </div>
             </div>
-          </div>
-        )}
-      />
-    );
+          )}
+        />
+      );
+    }
+
+    return null;
   }
 }
 

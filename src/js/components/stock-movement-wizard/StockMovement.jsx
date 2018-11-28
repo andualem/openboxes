@@ -7,10 +7,11 @@ import CreateStockMovement from './CreateStockMovement';
 import AddItemsPage from './AddItemsPage';
 import EditPage from './EditPage';
 import PickPage from './PickPage';
+import PackingPage from './PackingPage';
 import SendMovementPage from './SendMovementPage';
 import WizardSteps from '../form-elements/WizardSteps';
 import apiClient from '../../utils/apiClient';
-import { showSpinner, hideSpinner } from '../../actions';
+import { fetchSessionInfo, showSpinner, hideSpinner } from '../../actions';
 
 /** Main stock movement form's wizard component. */
 class StockMovements extends Component {
@@ -26,9 +27,11 @@ class StockMovements extends Component {
     this.nextPage = this.nextPage.bind(this);
     this.previousPage = this.previousPage.bind(this);
     this.goToPage = this.goToPage.bind(this);
+    this.setValues = this.setValues.bind(this);
   }
 
   componentDidMount() {
+    this.props.fetchSessionInfo();
     this.fetchInitialValues();
   }
 
@@ -37,7 +40,7 @@ class StockMovements extends Component {
    * @public
    */
   static getStepList() {
-    return ['Create', 'Add items', 'Edit', 'Pick', 'Send'];
+    return ['Create', 'Add items', 'Edit', 'Pick', 'Pack', 'Send'];
   }
 
   /**
@@ -66,11 +69,21 @@ class StockMovements extends Component {
         previousPage={this.previousPage}
         onSubmit={this.nextPage}
       />,
+      <PackingPage
+        initialValues={this.state.values}
+        previousPage={this.previousPage}
+        onSubmit={this.nextPage}
+      />,
       <SendMovementPage
         initialValues={this.state.values}
         previousPage={this.previousPage}
+        setValues={this.setValues}
       />,
     ];
+  }
+
+  setValues(values) {
+    this.setState({ values });
   }
 
   /**
@@ -88,7 +101,7 @@ class StockMovements extends Component {
       const newName = `${origin.name}.${destination.name}.${dateReq}.${stocklistPart}${trackingNumber}.${description}`;
       return newName.replace(/ /gi, '');
     }
-    return this.state.values.shipmentName;
+    return this.state.values.name;
   }
 
   /**
@@ -109,7 +122,6 @@ class StockMovements extends Component {
             ...resp,
             stockMovementId: resp.id,
             movementNumber: resp.identifier,
-            shipmentName: resp.name,
             origin: {
               id: resp.origin.id,
               type: originType ? originType.locationTypeCode : null,
@@ -144,16 +156,19 @@ class StockMovements extends Component {
               page = 4;
               prevPage = 3;
               break;
-            default:
+            case 'PICKED':
               page = 5;
+              prevPage = 4;
+              break;
+            default:
+              page = 6;
               if (values.origin.type === 'SUPPLIER') {
                 prevPage = 2;
               } else {
-                prevPage = 4;
+                prevPage = 5;
               }
           }
           this.setState({ values, page, prevPage });
-          this.fetchBins();
         })
         .catch(() => this.props.hideSpinner());
     }
@@ -199,8 +214,8 @@ class StockMovements extends Component {
         </div>
         <div className="panel panel-primary">
           <div className="panel-heading movement-number">
-            {(values.movementNumber && values.shipmentName && !values.trackingNumber) &&
-              <span>{`${values.movementNumber} - ${values.shipmentName}`}</span>
+            {(values.movementNumber && values.name && !values.trackingNumber) &&
+              <span>{`${values.movementNumber} - ${values.name}`}</span>
             }
             {values.trackingNumber &&
               <span>{`${values.movementNumber} - ${this.getShipmentName()}`}</span>
@@ -215,7 +230,7 @@ class StockMovements extends Component {
   }
 }
 
-export default connect(null, { showSpinner, hideSpinner })(StockMovements);
+export default connect(null, { fetchSessionInfo, showSpinner, hideSpinner })(StockMovements);
 
 StockMovements.propTypes = {
   /** React router's object which contains information about url varaiables and params */
@@ -228,6 +243,8 @@ StockMovements.propTypes = {
   hideSpinner: PropTypes.func.isRequired,
   /** Initial components' data */
   initialValues: PropTypes.shape({}),
+  /** Function called to get the currently selected location */
+  fetchSessionInfo: PropTypes.func.isRequired,
 };
 
 StockMovements.defaultProps = {

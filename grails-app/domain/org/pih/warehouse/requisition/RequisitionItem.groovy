@@ -11,14 +11,13 @@ package org.pih.warehouse.requisition
 
 import grails.validation.ValidationException
 import org.pih.warehouse.auth.AuthService
-import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.Person
 import org.pih.warehouse.core.User
-import org.pih.warehouse.inventory.Inventory;
-import org.pih.warehouse.inventory.InventoryItem;
-import org.pih.warehouse.picklist.PicklistItem;
-import org.pih.warehouse.product.Category;
-import org.pih.warehouse.product.Product;
+import org.pih.warehouse.inventory.Inventory
+import org.pih.warehouse.inventory.InventoryItem
+import org.pih.warehouse.picklist.PicklistItem
+import org.pih.warehouse.product.Category
+import org.pih.warehouse.product.Product
 import org.pih.warehouse.product.ProductGroup
 import org.pih.warehouse.product.ProductPackage
 
@@ -108,7 +107,7 @@ class RequisitionItem implements Comparable<RequisitionItem>, Serializable {
         productPackage(nullable:true)
         inventoryItem(nullable:true)
         requestedBy(nullable:true)
-        quantity(nullable:false, min:1)
+        quantity(nullable:false, min:0)
         quantityApproved(nullable: true)
         quantityCanceled(nullable:true,
             validator: { value, obj->
@@ -335,7 +334,7 @@ class RequisitionItem implements Comparable<RequisitionItem>, Serializable {
 
         // Remove all picklist items
         def picklistItems = getPicklistItems()
-        picklistItems?.toArray().each {
+        picklistItems?.toArray()?.each {
             removeFromPicklistItems(it)
             it.picklist.removeFromPicklistItems(it)
             it.delete()

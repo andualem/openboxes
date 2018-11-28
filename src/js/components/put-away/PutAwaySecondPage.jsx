@@ -93,7 +93,7 @@ class PutAwaySecondPage extends Component {
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Lot',
+      Header: 'Lot/Serial No.',
       accessor: 'inventoryItem.lotNumber',
       style: { whiteSpace: 'normal' },
       Filter,
@@ -199,7 +199,7 @@ class PutAwaySecondPage extends Component {
    */
   fetchBins() {
     this.props.showSpinner();
-    const url = '/openboxes/api/internalLocations';
+    const url = `/openboxes/api/internalLocations?location.id=${this.props.locationId}&locationTypeCode=BIN_LOCATION`;
 
     return apiClient.get(url)
       .then((response) => {
@@ -217,7 +217,7 @@ class PutAwaySecondPage extends Component {
   */
   savePutAways() {
     this.props.showSpinner();
-    const url = '/openboxes/api/putaways';
+    const url = `/openboxes/api/putaways?location.id=${this.props.locationId}`;
 
     return apiClient.post(url, flattenRequest(this.state.putAway))
       .then((response) => {
@@ -272,22 +272,31 @@ class PutAwaySecondPage extends Component {
 
     return (
       <div className="container-fluid pt-2">
-        <h1>Put-Away - {this.state.putAway.putawayNumber}</h1>
-        <div className="mb-2">
+        <h1>Put Away - {this.state.putAway.putawayNumber}</h1>
+        <div className="d-flex justify-content-between mb-2">
+          <div>
           Show by:
+            <button
+              className="btn btn-primary ml-2 btn-xs"
+              data-toggle="button"
+              aria-pressed="false"
+              onClick={toggleTree}
+            >
+              {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+            </button>
+          </div>
           <button
-            className="btn btn-primary ml-2"
-            data-toggle="button"
-            aria-pressed="false"
-            onClick={toggleTree}
-          >
-            {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
-          </button>
-          <button
-            className="float-right btn btn-outline-secondary align-self-end"
+            className="btn btn-outline-secondary btn-xs"
+            style={{ marginRight: 170 }}
             onClick={() => this.generatePutAwayList()}
           >
             <span><i className="fa fa-print pr-2" />Generate Put-Away list</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => this.savePutAways()}
+            className="float-right btn btn-outline-primary align-self-end btn-xs"
+          >Next
           </button>
         </div>
         {
@@ -313,7 +322,7 @@ class PutAwaySecondPage extends Component {
         <button
           type="button"
           onClick={() => this.savePutAways()}
-          className="btn btn-outline-primary float-right my-2"
+          className="btn btn-outline-primary float-right my-2 btn-xs"
         >Next
         </button>
       </div>
@@ -339,6 +348,8 @@ PutAwaySecondPage.propTypes = {
   pivotBy: PropTypes.arrayOf(PropTypes.string),
   /** List of currently expanded put-away's items */
   expanded: PropTypes.shape({}),
+  /** Location ID (currently chosen). To be used in internalLocations and putaways requests. */
+  locationId: PropTypes.string.isRequired,
 };
 
 PutAwaySecondPage.defaultProps = {

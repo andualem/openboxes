@@ -445,8 +445,10 @@ jqueryValidationUi {
 
 
 // Allow users to customize logo image url as well as labale
-openboxes.logo.url = ""
-openboxes.logo.label = "OpenBoxes"
+openboxes.logo.label = ""
+openboxes.logo.url = "/openboxes/images/logo/logo.png"
+openboxes.logoSquare.url = "/openboxes/images/logo/logo-512x512.png"
+openboxes.logoSmall.url = "/openboxes/images/logo/logo-small.png"
 
 // Grails Sentry/Raven plugin
 // NOTE: You'll need to enable the plugin and set a DSN using an external config properties file
@@ -454,24 +456,32 @@ openboxes.logo.label = "OpenBoxes"
 grails.plugins.raven.active = false
 grails.plugins.raven.dsn = "https://{PUBLIC_KEY}:{SECRET_KEY}@app.getsentry.com/{PROJECT_ID}"
 
-// Dashboard configuration to indicate whether widgets are enabled/disabled
+// Dashboard configuration to allow specific ordering of widgets (overrides enabled/disabled config)
+openboxes.dashboard.column1.widgets=["requisitionItemSummary","requisitionSummary","receiptSummary","shipmentSummary","indicatorSummary"]
+openboxes.dashboard.column2.widgets=["binLocationSummary", "expiringSummary","productSummary","genericProductSummary",]
+openboxes.dashboard.column3.widgets=["newsSummary","activitySummary","valueSummary","tagSummary"]
+
+// Column 1
 openboxes.dashboard.requisitionItemSummary.enabled=true
-openboxes.dashboard.requisitionSummary.enabled=true
+openboxes.dashboard.requisitionSummary.enabled=false
 openboxes.dashboard.receiptSummary.enabled=true
 openboxes.dashboard.shipmentSummary.enabled=true
 openboxes.dashboard.indicatorSummary.enabled=false
-openboxes.dashboard.valueSummary.enabled=false
-openboxes.dashboard.productSummary.enabled=true
-openboxes.dashboard.genericProductSummary.enabled=true
+
+// Column 2
 openboxes.dashboard.binLocationSummary.enabled=true
+openboxes.dashboard.productSummary.enabled=true
+openboxes.dashboard.genericProductSummary.enabled=false
 openboxes.dashboard.expiringSummary.enabled=true
+
+// Column 3
+openboxes.dashboard.newsSummary.enabled=false
 openboxes.dashboard.activitySummary.enabled=true
+openboxes.dashboard.valueSummary.enabled=false
 openboxes.dashboard.tagSummary.enabled=true
 
-// Dashboard configuration to allow specific ordering of widgets (overrides enabled/disabled config)
-openboxes.dashboard.column1.widgets=["requisitionItemSummary","requisitionSummary","receiptSummary","shipmentSummary","indicatorSummary"]
-openboxes.dashboard.column2.widgets=["binLocationSummary","valueSummary","productSummary","genericProductSummary","expiringSummary"]
-openboxes.dashboard.column3.widgets=["activitySummary","tagSummary"]
+// Default value for news summary
+openboxes.dashboard.newsSummary.newsItems = []
 
 // OpenBoxes identifier config
 openboxes.identifier.numeric = Constants.RANDOM_IDENTIFIER_NUMERIC_CHARACTERS
@@ -481,6 +491,7 @@ openboxes.identifier.transaction.format = Constants.DEFAULT_TRANSACTION_NUMBER_F
 openboxes.identifier.order.format = Constants.DEFAULT_ORDER_NUMBER_FORMAT
 openboxes.identifier.product.format = Constants.DEFAULT_PRODUCT_NUMBER_FORMAT
 openboxes.identifier.productSupplier.format = Constants.DEFAULT_PRODUCT_NUMBER_FORMAT
+openboxes.identifier.receipt.format = Constants.DEFAULT_RECEIPT_NUMBER_FORMAT
 openboxes.identifier.requisition.format = Constants.DEFAULT_REQUISITION_NUMBER_FORMAT
 openboxes.identifier.shipment.format = Constants.DEFAULT_SHIPMENT_NUMBER_FORMAT
 
@@ -600,11 +611,45 @@ openboxes.locale.defaultCurrencyCode = "USD"
 openboxes.locale.defaultCurrencySymbol = "\$"
 //openboxes.locale.supportedCurrencyCodes = ["USD","CFA"]
 
+// Global megamenu configuration
+openboxes.megamenu.dashboard.enabled = true
+openboxes.megamenu.analytics.enabled = true
+openboxes.megamenu.inventory.enabled = true
+openboxes.megamenu.orders.enabled = true
+openboxes.megamenu.requisitions.enabled = true
+openboxes.megamenu.shipping.enabled = true
+openboxes.megamenu.stockMovement.enabled = true
+openboxes.megamenu.receiving.enabled = true
+openboxes.megamenu.reporting.enabled = true
+openboxes.megamenu.products.enabled = true
+openboxes.megamenu.configuration.enabled = true
+openboxes.megamenu.customLinks.enabled = false
+openboxes.megamenu.inbound.enabled = true
+openboxes.megamenu.outbound.enabled = true
+
+
+// Custom links example
+//openboxes {
+//	megamenu {
+//		customLinks {
+//			content = [
+//					[label: "Search Google", href: "https://www.google.com", target: "_blank"]
+//			]
+//		}
+//	}
+//}
+
+openboxes.generateName.separator = " - "
+
+
 // Disable feature during development
 openboxes.shipping.splitPickItems.enabled = true
 
 // Add item to shipment search
 openboxes.shipping.search.maxResults = 1000
+
+// Automatically create temporary receiving locations for shipments
+openboxes.receiving.createReceivingLocation.enabled = true
 
 // Grails doc configuration
 grails.doc.title = "OpenBoxes"

@@ -95,7 +95,7 @@ class PutAwayPage extends Component {
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Lot',
+      Header: 'Lot/Serial No.',
       accessor: 'inventoryItem.lotNumber',
       style: { whiteSpace: 'normal' },
       Filter,
@@ -143,7 +143,7 @@ class PutAwayPage extends Component {
    */
   fetchPutAwayCandidates() {
     this.props.showSpinner();
-    const url = '/openboxes/api/putaways';
+    const url = `/openboxes/api/putaways?location.id=${this.props.locationId}`;
 
     return apiClient.get(url)
       .then((response) => {
@@ -176,7 +176,7 @@ class PutAwayPage extends Component {
    */
   savePutAways() {
     this.props.showSpinner();
-    const url = '/openboxes/api/putaways';
+    const url = `/openboxes/api/putaways?location.id=${this.props.locationId}`;
     const payload = {
       putawayNumber: '',
       'putawayAssignee.id': '',
@@ -368,28 +368,36 @@ class PutAwayPage extends Component {
 
     return (
       <div className="container-fluid pt-2">
-        <h1>Put-Away </h1>
-        <div className="mb-2">
-          Show by:
-          <button
-            className="btn btn-primary ml-2"
-            data-toggle="button"
-            aria-pressed="false"
-            onClick={toggleTree}
-          >
-            {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
-          </button>
-        </div>
-        <div className="d-flex flex-row align-items-center mb-2">
-          <div className="pr-2">Lines in pending put-aways:</div>
-          <div style={{ width: '150px' }}>
-            <Select
-              options={[{ value: false, label: 'Exclude' }, { value: true, label: 'Include' }]}
-              onChange={val => this.filterPutAways(val)}
-              objectValue
-              initialValue={false}
-              clearable={false}
-            />
+        <h1>Put Away </h1>
+        <div className="d-flex justify-content-between mb-2">
+          <div>
+            Show by:
+            <button
+              className="btn btn-primary ml-2 btn-xs"
+              data-toggle="button"
+              aria-pressed="false"
+              onClick={toggleTree}
+            >
+              {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+            </button>
+          </div>
+          <div className="d-flex bd-highlight mb-2 align-items-center">
+            <div>Lines in pending put-aways:</div>
+            <div className="form-control-xs mb-2" style={{ width: '150px', marginRight: '33vw' }}>
+              <Select
+                options={[{ value: false, label: 'Exclude' }, { value: true, label: 'Include' }]}
+                onChange={val => this.filterPutAways(val)}
+                objectValue
+                initialValue={false}
+                clearable={false}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => this.savePutAways()}
+              className="btn btn-outline-primary ml-auto btn-xs"
+            >Start Put-Away
+            </button>
           </div>
         </div>
         {
@@ -443,13 +451,15 @@ class PutAwayPage extends Component {
             />
             : null
         }
-        <button
-          type="button"
-          disabled={this.state.selection.size < 1}
-          onClick={() => this.savePutAways()}
-          className="btn btn-outline-primary float-right my-2"
-        >Start Put-Away
-        </button>
+        <div>
+          <button
+            type="button"
+            disabled={this.state.selection.size < 1}
+            onClick={() => this.savePutAways()}
+            className="btn btn-outline-primary float-right my-2 btn-xs"
+          >Start Put-Away
+          </button>
+        </div>
       </div>
     );
   }
@@ -464,5 +474,7 @@ PutAwayPage.propTypes = {
   hideSpinner: PropTypes.func.isRequired,
   /** Function taking user to the next page */
   nextPage: PropTypes.func.isRequired,
+  /** Location ID (currently chosen). To be used in putaways requests. */
+  locationId: PropTypes.string.isRequired,
 };
 

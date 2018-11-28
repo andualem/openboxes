@@ -5,6 +5,9 @@ import { Form } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
 import PropTypes from 'prop-types';
 import Alert from 'react-s-alert';
+import { confirmAlert } from 'react-confirm-alert';
+
+import 'react-confirm-alert/src/react-confirm-alert.css';
 
 import ArrayField from '../form-elements/ArrayField';
 import TextField from '../form-elements/TextField';
@@ -27,6 +30,7 @@ const BTN_CLASS_MAPPER = {
 const FIELDS = {
   editPageItems: {
     type: ArrayField,
+    virtualized: true,
     rowComponent: TableRowWithSubfields,
     getDynamicRowAttr: ({ rowValues, subfield }) => {
       let className = rowValues.statusCode === 'SUBSTITUTED' ? 'crossed-out ' : '';
@@ -45,7 +49,7 @@ const FIELDS = {
       },
       productName: {
         type: LabelField,
-        flexWidth: '6',
+        flexWidth: '4.5',
         label: 'Product Name',
         getDynamicAttr: ({ subfield }) => ({
           className: subfield ? 'text-center' : 'text-left ml-1',
@@ -63,6 +67,25 @@ const FIELDS = {
         type: LabelField,
         label: 'Qty available',
         flexWidth: '0.8',
+        fieldKey: '',
+        getDynamicAttr: ({ fieldValue }) => {
+          let className = '';
+          if (!fieldValue.quantityAvailable ||
+            fieldValue.quantityAvailable < fieldValue.quantityRequested) {
+            className = 'text-danger';
+          }
+          return {
+            className,
+          };
+        },
+        attributes: {
+          formatValue: value => (value.quantityAvailable ? (value.quantityAvailable.toLocaleString('en-US')) : value.quantityAvailable),
+        },
+      },
+      totalMonthlyQuantity: {
+        type: LabelField,
+        label: 'Total monthly quantity',
+        flexWidth: '1.35',
         attributes: {
           formatValue: value => (value ? (value.toLocaleString('en-US')) : value),
         },
@@ -84,8 +107,9 @@ const FIELDS = {
           title: 'Substitutes',
         },
         getDynamicAttr: ({
-          fieldValue, rowIndex, stockMovementId, onResponse,
+          fieldValue, rowIndex, stockMovementId, onResponse, reviseRequisitionItems, values,
         }) => ({
+          onOpen: () => reviseRequisitionItems(values),
           productCode: fieldValue.productCode,
           btnOpenText: fieldValue.substitutionStatus,
           btnOpenDisabled: fieldValue.substitutionStatus === 'NO' || fieldValue.statusCode === 'SUBSTITUTED',
@@ -159,6 +183,9 @@ function validate(values) {
     if (!_.isEmpty(item.quantityRevised) && (item.quantityRevised > item.quantityAvailable)) {
       errors.editPageItems[key] = { quantityRevised: 'Revised quantity exceeds quantity available' };
     }
+    if (!_.isEmpty(item.quantityRevised) && (item.quantityRevised < 0)) {
+      errors.editPageItems[key] = { quantityRevised: 'Revised quantity can\'t be negative' };
+    }
   });
   return errors;
 }
@@ -173,13 +200,13 @@ class EditItemsPage extends Component {
 
     this.state = {
       statusCode: '',
-      redoAutopick: false,
       revisedItems: [],
       values: { ...this.props.initialValues, editPageItems: [] },
     };
 
     this.revertItem = this.revertItem.bind(this);
     this.saveNewItems = this.saveNewItems.bind(this);
+    this.reviseRequisitionItems = this.reviseRequisitionItems.bind(this);
     this.props.showSpinner();
   }
 
@@ -206,6 +233,7 @@ class EditItemsPage extends Component {
           ...val,
           disabled: true,
           rowKey: _.uniqueId('lineItem_'),
+          quantityAvailable: val.quantityAvailable > 0 ? val.quantityAvailable : 0,
           product: {
             ...val.product,
             label: `${val.productCode} ${val.productName}`,
@@ -256,7 +284,8 @@ class EditItemsPage extends Component {
             revision => revision.requisitionItemId === item.requisitionItemId,
           );
           return _.isEmpty(oldRevision) ? true :
-            (oldRevision.quantityRevised !== item.quantityRevised);
+            ((oldRevision.quantityRevised !== item.quantityRevised) ||
+             (oldRevision.reasonCode !== item.reasonCode));
         }
         return false;
       },
@@ -271,7 +300,6 @@ class EditItemsPage extends Component {
     };
 
     if (payload.lineItems.length) {
-      this.setState({ redoAutopick: true });
       return apiClient.post(url, payload);
     }
 
@@ -299,8 +327,25 @@ class EditItemsPage extends Component {
    * @public
    */
   refresh() {
-    this.setState({ revisedItems: [], values: { ...this.state.values, editPageItems: [] } });
-    this.fetchAllData(true);
+    confirmAlert({
+      title: 'Confirm refresh',
+      message: 'Are you sure you want to refresh? Your progress since last save will be lost.',
+      buttons: [
+        {
+          label: 'Yes',
+          onClick: () => {
+            this.setState({
+              revisedItems: [],
+              values: { ...this.state.values, editPageItems: [] },
+            });
+            this.fetchAllData(true);
+          },
+        },
+        {
+          label: 'No',
+        },
+      ],
+    });
   }
 
   /**
@@ -308,9 +353,12 @@ class EditItemsPage extends Component {
    * after sending createPicklist: 'true' to backend autopick functionality is invoked.
    * @public
    */
-  transitionToStep4() {
+  transitionToNextStep() {
     const url = `/openboxes/api/stockMovements/${this.state.values.stockMovementId}/status`;
-    const payload = { status: 'PICKING', createPicklist: 'true' };
+    const payload = {
+      status: 'PICKING',
+      createPicklist: this.state.statusCode === 'VERIFYING' ? 'true' : 'false',
+    };
 
     return apiClient.post(url, payload);
   }
@@ -336,13 +384,9 @@ class EditItemsPage extends Component {
     this.props.showSpinner();
     this.reviseRequisitionItems(formValues)
       .then(() => {
-        if (this.state.statusCode === 'VERIFYING' || this.state.redoAutopick) {
-          this.transitionToStep4()
-            .then(() => this.props.onSubmit(formValues))
-            .catch(() => this.props.hideSpinner());
-        } else {
-          this.props.onSubmit(formValues);
-        }
+        this.transitionToNextStep()
+          .then(() => this.props.onSubmit(formValues))
+          .catch(() => this.props.hideSpinner());
       }).catch(() => this.props.hideSpinner());
   }
 
@@ -390,7 +434,6 @@ class EditItemsPage extends Component {
     return apiClient.post(revertItemsUrl, payload)
       .then((response) => {
         const { editPageItems } = response.data.data.editPage;
-        this.setState({ redoAutopick: true });
         this.saveNewItems(editPageItems);
         this.props.hideSpinner();
       })
@@ -407,21 +450,20 @@ class EditItemsPage extends Component {
         validate={validate}
         mutators={{ ...arrayMutators }}
         initialValues={this.state.values}
-        render={({ handleSubmit, values, invalid }) => (
+        render={({ handleSubmit, values }) => (
           <div className="d-flex flex-column">
             <span>
               <button
                 type="button"
                 onClick={() => this.refresh()}
-                className="float-right py-1 mb-1 btn btn-outline-secondary align-self-end ml-1"
+                className="float-right mb-1 btn btn-outline-secondary align-self-end ml-1 btn-xs"
               >
                 <span><i className="fa fa-refresh pr-2" />Refresh</span>
               </button>
               <button
                 type="button"
-                disabled={invalid}
                 onClick={() => this.save(values)}
-                className="float-right py-1 mb-1 btn btn-outline-secondary align-self-end"
+                className="float-right mb-1 btn btn-outline-secondary align-self-end btn-xs"
               >
                 <span><i className="fa fa-save pr-2" />Save</span>
               </button>
@@ -432,12 +474,14 @@ class EditItemsPage extends Component {
                 reasonCodes: this.props.reasonCodes,
                 onResponse: this.saveNewItems,
                 revertItem: this.revertItem,
+                reviseRequisitionItems: this.reviseRequisitionItems,
+                values,
               }))}
               <div>
-                <button type="button" className="btn btn-outline-primary btn-form" onClick={() => this.props.previousPage(values)}>
+                <button type="button" className="btn btn-outline-primary btn-form btn-xs" onClick={() => this.props.previousPage(values)}>
                   Previous
                 </button>
-                <button type="submit" className="btn btn-outline-primary btn-form float-right">Next</button>
+                <button type="submit" className="btn btn-outline-primary btn-form float-right btn-xs">Next</button>
               </div>
             </form>
           </div>

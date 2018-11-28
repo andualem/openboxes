@@ -11,11 +11,7 @@
                 <thead>
                     <tr>
 
-                        <g:sortableColumn property="id" title="${warehouse.message(code: 'productAssociation.id.label', default: 'Id')}" />
-
                         <g:sortableColumn property="code" title="${warehouse.message(code: 'productAssociation.code.label', default: 'Code')}" />
-
-                        <th><warehouse:message code="productAssociation.product.label" default="Product" /></th>
 
                         <th><warehouse:message code="productAssociation.associatedProduct.label" default="Associated Product" /></th>
 
@@ -33,33 +29,28 @@
                     <g:each in="${productInstance?.substitutions}" status="i" var="productSubstitution">
                         <tr class="${(i % 2) == 0 ? 'odd' : 'even'}">
 
-                            <td><g:link controller="productAssociation" action="edit" id="${productSubstitution.id}">${fieldValue(bean: productSubstitution, field: "id")}</g:link></td>
-
                             <td>${fieldValue(bean: productSubstitution, field: "code")}</td>
 
                             <td>
-                                <g:link controller="product" action="edit" id="${productSubstitution?.product?.id}">
-                                    ${fieldValue(bean: productSubstitution?.product, field: "productCode")}
-                                    ${fieldValue(bean: productSubstitution?.product, field: "name")}
-                                </g:link>
-
-                            </td>
-
-                            <td>
-                                <g:link controller="product" action="edit" id="${productSubstitution?.product?.id}">
+                                <g:link controller="product" action="edit" id="${productSubstitution?.associatedProduct?.id}">
                                     ${fieldValue(bean: productSubstitution?.associatedProduct, field: "productCode")}
                                     ${fieldValue(bean: productSubstitution?.associatedProduct, field: "name")}
                                 </g:link>
                             </td>
 
-                            <td>${fieldValue(bean: productSubstitution, field: "quantity")}</td>
+                            <td>1:${fieldValue(bean: productSubstitution, field: "quantity")}</td>
 
                             <td>${fieldValue(bean: productSubstitution, field: "comments")}</td>
 
                             <td><format:date obj="${productSubstitution.dateCreated}" /></td>
 
                             <td>
-                                <g:remoteLink controller="product" action="removeFromProductAssociations"
+
+                                <g:link controller="productAssociation" action="edit" id="${productSubstitution.id}" class="button">
+                                    <g:message code="default.button.edit.label"/>
+                                </g:link>
+
+                                <g:remoteLink controller="product" action="removeFromProductAssociations" class="button"
                                               id="${productSubstitution.id}" params="['product.id': productSubstitution.product.id]"
                                             update="productSubstitutions">
                                     <g:message code="default.button.delete.label"/>
@@ -76,18 +67,25 @@
                         </tr>
                     </g:unless>
                 </tbody>
+                <tfoot>
+                <tr>
+                    <td colspan="8">
+                        <div class="center">
+                            <button class="button btn-show-dialog"
+                                    data-target="#product-substitution-dialog"
+                                    data-title="${g.message(code: 'default.create.label', args: [g.message(code:'productAssociation.label')])}"
+                                    data-url="${request.contextPath}/productAssociation/dialog?product.id=${productInstance?.id}">
+                                ${g.message(code: 'default.create.label', args: [g.message(code:'productAssociation.label')])}
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                </tfoot>
 
             </table>
         </div>
     </div>
-    <div class="center">
-        <button class="button btn-show-dialog"
-                data-target="#product-substitution-dialog"
-                data-title="${g.message(code: 'default.create.label', args: [g.message(code:'productAssociation.label')])}"
-                data-url="${request.contextPath}/productAssociation/dialog?product.id=${productInstance?.id}">
-            ${g.message(code: 'default.create.label', args: [g.message(code:'productAssociation.label')])}
-        </button>
-    </div>
+
 
 </div>
 

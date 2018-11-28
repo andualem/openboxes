@@ -5,6 +5,8 @@ import { Overlay } from 'react-overlays';
 import PropTypes from 'prop-types';
 import { Tooltip } from 'react-tippy';
 
+import 'react-select-plus/dist/react-select-plus.css';
+
 // eslint-disable-next-line react/prop-types
 const Dropdown = ({ children, style, width }) => (
   <div
@@ -106,6 +108,7 @@ class Select extends Component {
             name={this.state.id}
             {...attributes}
             options={options}
+            multi={multi}
             delimiter={delimiter}
             value={multi ? _.join(value, delimiter) : value}
             onChange={this.handleChange}

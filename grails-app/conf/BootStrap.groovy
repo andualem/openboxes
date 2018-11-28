@@ -8,11 +8,16 @@
  * You must not remove this notice, or any other, from this software.
  **/
 
+
 import grails.converters.JSON
 import grails.util.Environment
+import liquibase.Liquibase
+import liquibase.database.DatabaseFactory
 import org.pih.warehouse.api.AvailableItem
 import org.pih.warehouse.api.EditPage
 import org.pih.warehouse.api.EditPageItem
+import org.pih.warehouse.api.PackPage
+import org.pih.warehouse.api.PackPageItem
 import org.pih.warehouse.api.PartialReceipt
 import org.pih.warehouse.api.PartialReceiptContainer
 import org.pih.warehouse.api.PartialReceiptItem
@@ -21,12 +26,15 @@ import org.pih.warehouse.api.PickPageItem
 import org.pih.warehouse.api.StockAdjustment
 import org.pih.warehouse.api.StockMovement
 import org.pih.warehouse.api.StockMovementItem
+import org.pih.warehouse.api.Stocklist
+import org.pih.warehouse.api.StocklistItem
+import org.pih.warehouse.api.StocklistLocation
 import org.pih.warehouse.api.SubstitutionItem
 import org.pih.warehouse.api.SuggestedItem
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
-import org.pih.warehouse.core.LocationType
 import org.pih.warehouse.core.LocationGroup
+import org.pih.warehouse.core.LocationType
 import org.pih.warehouse.core.Person
 import org.pih.warehouse.core.User
 import org.pih.warehouse.inventory.InventoryItem
@@ -39,22 +47,18 @@ import org.pih.warehouse.product.Category
 import org.pih.warehouse.product.Product
 import org.pih.warehouse.product.ProductAssociation
 import org.pih.warehouse.product.ProductGroup
-import org.pih.warehouse.requisition.Requisition
-import org.pih.warehouse.requisition.RequisitionItem
 import org.pih.warehouse.receiving.Receipt
 import org.pih.warehouse.receiving.ReceiptItem
+import org.pih.warehouse.requisition.Requisition
+import org.pih.warehouse.requisition.RequisitionItem
+import org.pih.warehouse.shipping.Container
+import org.pih.warehouse.shipping.ContainerType
 import org.pih.warehouse.shipping.Shipment
 import org.pih.warehouse.shipping.ShipmentItem
 import org.pih.warehouse.shipping.ShipmentType
-import org.pih.warehouse.shipping.Container
-import org.pih.warehouse.shipping.ContainerType
-
+import util.LiquibaseUtil
 
 import javax.sql.DataSource
-
-import liquibase.Liquibase
-import liquibase.database.DatabaseFactory
-import util.LiquibaseUtil
 
 class BootStrap {
 
@@ -116,7 +120,7 @@ class BootStrap {
                         productCode: inventoryItem?.product?.productCode
                 ],
                 lotNumber: inventoryItem.lotNumber,
-                expirationDate: inventoryItem.expirationDate
+                expirationDate: inventoryItem.expirationDate?.format("MM/dd/yyyy")
         ]}
 
         JSON.registerObjectMarshaller(Location) { Location location -> [
@@ -127,7 +131,8 @@ class BootStrap {
                 locationGroup: location.locationGroup,
                 parentLocation: location.parentLocation,
                 locationType: location.locationType,
-                sortOrder: location.sortOrder
+                sortOrder: location.sortOrder,
+                hasBinLocationSupport: location.hasBinLocationSupport()
         ]}
 
         JSON.registerObjectMarshaller(Person) { Person person -> [
@@ -145,7 +150,7 @@ class BootStrap {
                 name: picklist.name,
                 description: picklist.description,
                 picker: picklist.picker,
-                datePicked: picklist.datePicked,
+                datePicked: picklist.datePicked?.format("MM/dd/yyyy"),
                 picklistItems: picklist.picklistItems,
                 "requisition.id": picklist?.requisition?.id
         ]}
@@ -159,7 +164,7 @@ class BootStrap {
                 "product.name": picklistItem?.inventoryItem?.product?.name,
                 "productCode": picklistItem?.inventoryItem?.product?.productCode,
                 lotNumber: picklistItem?.inventoryItem?.lotNumber,
-                expirationDate: picklistItem?.inventoryItem?.expirationDate,
+                expirationDate: picklistItem?.inventoryItem?.expirationDate?.format("MM/dd/yyyy"),
                 "binLocation.id": picklistItem?.binLocation?.id,
                 "binLocation.name": picklistItem?.binLocation?.name,
                 quantityPicked: picklistItem.quantity,
@@ -208,22 +213,24 @@ class BootStrap {
                 recipient: receiptItem.recipient
         ]}
 
-        JSON.registerObjectMarshaller(Requisition) { Requisition requisition -> [
+        JSON.registerObjectMarshaller(Requisition) { Requisition requisition ->
+            def defaultName = requisition?.isTemplate ? "Stocklist ${requisition?.id}" : null
+            [
                 id: requisition.id,
-                name: requisition.name,
+                name: requisition.name?:defaultName,
                 requisitionNumber: requisition.requestNumber,
                 description: requisition.description,
                 isTemplate: requisition.isTemplate,
                 type: requisition?.type?.name(),
                 status: requisition?.status?.name(),
                 commodityClass: requisition?.commodityClass?.name(),
-                dateRequested: requisition.dateRequested,
-                dateReviewed: requisition.dateReviewed,
-                dateVerified: requisition.dateVerified,
-                dateChecked: requisition.dateChecked,
-                dateDelivered: requisition.dateDelivered,
-                dateIssued: requisition.dateIssued,
-                dateReceived: requisition.dateReceived,
+                dateRequested: requisition.dateRequested?.format("MM/dd/yyyy"),
+                dateReviewed: requisition.dateReviewed?.format("MM/dd/yyyy"),
+                dateVerified: requisition.dateVerified?.format("MM/dd/yyyy"),
+                dateChecked: requisition.dateChecked?.format("MM/dd/yyyy"),
+                dateDelivered: requisition.dateDelivered?.format("MM/dd/yyyy HH:mm XXX"),
+                dateIssued: requisition.dateIssued?.format("MM/dd/yyyy"),
+                dateReceived: requisition.dateReceived?.format("MM/dd/yyyy"),
                 origin: requisition.origin,
                 destination: requisition.destination,
                 requestedBy: requisition.requestedBy,
@@ -278,10 +285,10 @@ class BootStrap {
                             type: shipment?.destination?.locationType?.locationTypeCode?.name()
 
                     ],
-                    expectedShippingDate: shipment.expectedShippingDate,
-                    actualShippingDate: shipment.actualShippingDate,
-                    expectedDeliveryDate: shipment.expectedDeliveryDate,
-                    actualDeliveryDate: shipment.actualDeliveryDate,
+                    expectedShippingDate: shipment.expectedShippingDate?.format("MM/dd/yyyy HH:mm XXX"),
+                    actualShippingDate: shipment.actualShippingDate?.format("MM/dd/yyyy HH:mm XXX"),
+                    expectedDeliveryDate: shipment.expectedDeliveryDate?.format("MM/dd/yyyy HH:mm XXX"),
+                    actualDeliveryDate: shipment.actualDeliveryDate?.format("MM/dd/yyyy HH:mm XXX"),
                     shipmentItems: shipment.shipmentItems,
                     containers: containerList
         ]}
@@ -343,6 +350,14 @@ class BootStrap {
             return pickPageItem.toJson()
         }
 
+        JSON.registerObjectMarshaller(PackPage) { PackPage packPage ->
+            return packPage.toJson()
+        }
+
+        JSON.registerObjectMarshaller(PackPageItem) { PackPageItem packPageItem ->
+            return packPageItem.toJson()
+        }
+
         JSON.registerObjectMarshaller(StockAdjustment) { StockAdjustment stockAdjustment ->
             return stockAdjustment.toJson()
         }
@@ -363,6 +378,17 @@ class BootStrap {
             return suggestedItem.toJson()
         }
 
+        JSON.registerObjectMarshaller(Stocklist) { Stocklist stocklist ->
+            return stocklist.toJson()
+        }
+
+        JSON.registerObjectMarshaller(StocklistLocation) { StocklistLocation stocklistLocation ->
+            return stocklistLocation.toJson()
+        }
+
+        JSON.registerObjectMarshaller(StocklistItem) { StocklistItem stocklistItem ->
+            return stocklistItem.toJson()
+        }
 
 
         // ================================    Static Data    ============================================

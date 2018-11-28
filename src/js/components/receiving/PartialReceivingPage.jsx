@@ -16,6 +16,20 @@ import Checkbox from '../../utils/Checkbox';
 import { showSpinner, hideSpinner, fetchUsers } from '../../actions';
 import EditLineModal from './modals/EditLineModal';
 
+const isReceived = (subfield, fieldValue) => {
+  if (subfield) {
+    return (_.toInteger(fieldValue.quantityReceived) + _.toInteger(fieldValue.quantityCanceled)) >=
+      _.toInteger(fieldValue.quantityShipped);
+  }
+
+  if (!fieldValue.shipmentItems) {
+    return true;
+  }
+
+  return _.every(fieldValue.shipmentItems, item =>
+    _.toInteger(item.quantityReceived) >= _.toInteger(item.quantityShipped));
+};
+
 const isReceiving = (subfield, fieldValue) => {
   if (subfield) {
     return !_.isNil(fieldValue.quantityReceiving) && fieldValue.quantityReceiving !== '';
@@ -25,7 +39,8 @@ const isReceiving = (subfield, fieldValue) => {
     return false;
   }
 
-  return _.every(fieldValue.shipmentItems, item => !_.isNil(item.quantityReceiving) && item.quantityReceiving !== '');
+  return _.every(fieldValue.shipmentItems, item => (!_.isNil(item.quantityReceiving) && item.quantityReceiving !== '') || isReceived(true, item))
+    && _.some(fieldValue.shipmentItems, item => !_.isNil(item.quantityReceiving) && item.quantityReceiving !== '');
 };
 
 const isIndeterminate = (subfield, fieldValue) => {
@@ -38,7 +53,15 @@ const isIndeterminate = (subfield, fieldValue) => {
   }
 
   return _.some(fieldValue.shipmentItems, item => !_.isNil(item.quantityReceiving) && item.quantityReceiving !== '')
-    && _.some(fieldValue.shipmentItems, item => _.isNil(item.quantityReceiving) || item.quantityReceiving === '');
+    && _.some(fieldValue.shipmentItems, item => (_.isNil(item.quantityReceiving) || item.quantityReceiving === '') && !isReceived(true, item));
+};
+
+const isAnyItemSelected = (containers) => {
+  if (!_.size(containers)) {
+    return false;
+  }
+
+  return _.some(containers, cont => _.size(cont.shipmentItems) && _.some(cont.shipmentItems, item => !_.isNil(item.quantityReceiving) && item.quantityReceiving !== ''));
 };
 
 const FIELDS = {
@@ -58,34 +81,48 @@ const FIELDS = {
     type: DateField,
     label: 'Delivered On',
     attributes: {
-      dateFormat: 'MM/DD/YYYY',
+      showTimeSelect: true,
+      dateFormat: 'MM/DD/YYYY HH:mm Z',
     },
+    getDynamicAttr: ({ shipmentReceived }) => ({
+      disabled: shipmentReceived,
+    }),
   },
   buttonsTop: {
-    // eslint-disable-next-line react/prop-types
-    type: ({ autofillLines, onSave }) => (
-      <div className="mb-3 text-center">
-        <button type="button" className="btn btn-outline-success margin-bottom-lg mr-3" onClick={() => autofillLines()}>
+    type: ({
+      // eslint-disable-next-line react/prop-types
+      autofillLines, onSave, saveDisabled, shipmentReceived,
+    }) => (
+      <div className="mb-1 text-center">
+        <button type="button" className="btn btn-outline-success mr-3 btn-xs" disabled={shipmentReceived} onClick={() => autofillLines()}>
           Autofill quantities
         </button>
-        <button type="button" className="btn btn-outline-success margin-bottom-lg" onClick={() => onSave()}>Save</button>
-        <button type="submit" className="btn btn-outline-primary float-right btn-form">Next</button>
+        <button type="button" className="btn btn-outline-success btn-xs" disabled={saveDisabled || shipmentReceived} onClick={() => onSave()}>Save</button>
+        <button type="submit" className="btn btn-outline-primary float-right btn-form btn-xs" disabled={saveDisabled || shipmentReceived}>Next</button>
       </div>),
   },
   containers: {
     type: ArrayField,
+    maxTableHeight: window.innerWidth > 1440 ? 'calc(100vh - 450px)' : 'calc(100vh - 250px)',
     rowComponent: TableRowWithSubfields,
     subfieldKey: 'shipmentItems',
+    getDynamicRowAttr: ({ rowValues, subfield }) => {
+      let className = '';
+      if (isReceived(subfield, rowValues)) {
+        className = 'text-disabled';
+      }
+      return { className };
+    },
     fields: {
       autofillLine: {
         fieldKey: '',
         fixedWidth: '50px',
         type: ({
           // eslint-disable-next-line react/prop-types
-          subfield, parentIndex, rowIndex, autofillLines, fieldPreview, fieldValue,
+          subfield, parentIndex, rowIndex, autofillLines, fieldValue, shipmentReceived,
         }) => (
           <Checkbox
-            disabled={fieldPreview}
+            disabled={shipmentReceived || isReceived(subfield, fieldValue)}
             className={subfield ? 'ml-4' : 'mr-4'}
             value={isReceiving(subfield, fieldValue)}
             indeterminate={isIndeterminate(subfield, fieldValue)}
@@ -102,6 +139,7 @@ const FIELDS = {
         fieldKey: '',
         type: params => (!params.subfield ? <LabelField {...params} /> : null),
         label: 'Pallet',
+        flexWidth: '8',
         attributes: {
           formatValue: fieldValue => (_.get(fieldValue, 'parentContainer.name') || _.get(fieldValue, 'container.name') || 'Unpacked'),
         },
@@ -110,6 +148,7 @@ const FIELDS = {
         fieldKey: '',
         type: params => (!params.subfield ? <LabelField {...params} /> : null),
         label: 'Box',
+        flexWidth: '6',
         attributes: {
           formatValue: fieldValue => (_.get(fieldValue, 'parentContainer.name') ? _.get(fieldValue, 'container.name') || '' : ''),
         },
@@ -121,17 +160,17 @@ const FIELDS = {
       'product.name': {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
         label: 'Product',
-        flexWidth: '18',
+        flexWidth: '24',
         attributes: {
           className: 'text-left ml-1',
           showValueTooltip: true,
         },
       },
-      'inventoryItem.lotNumber': {
+      lotNumber: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
         label: 'Lot/Serial No',
       },
-      'inventoryItem.expirationDate': {
+      expirationDate: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
         label: 'Expiration Date',
         fixedWidth: '130px',
@@ -152,24 +191,42 @@ const FIELDS = {
           formatValue: value => (value ? value.toLocaleString('en-US') : '0'),
         },
       },
+      quantityRemaining: {
+        type: params => (params.subfield ? <LabelField {...params} /> : null),
+        label: 'Remaining',
+        fixedWidth: '75px',
+        attributes: {
+          formatValue: value => (value ? (value.toLocaleString('en-US')) : value),
+        },
+      },
       quantityReceiving: {
         type: params => (params.subfield ? <TextField {...params} /> : null),
+        fieldKey: '',
         label: 'To Receive',
         fixedWidth: '85px',
+        getDynamicAttr: ({ shipmentReceived, fieldValue }) => ({
+          disabled: shipmentReceived || isReceived(true, fieldValue),
+        }),
       },
       binLocation: {
         type: params => (
           params.subfield ?
             <SelectField {...params} /> :
             <Select
-              disabled={params.fieldPreview}
+              disabled={!params.hasBinLocationSupport ||
+                params.shipmentReceived || isReceived(false, params.fieldValue)}
               options={params.bins}
               onChange={value => params.setLocation(params.rowIndex, value)}
               objectValue
+              className="select-xs"
             />),
+        fieldKey: '',
         label: 'Bin Location',
-        getDynamicAttr: ({ bins }) => ({
+        getDynamicAttr: ({
+          bins, hasBinLocationSupport, shipmentReceived, fieldValue,
+        }) => ({
           options: bins,
+          disabled: !hasBinLocationSupport || shipmentReceived || isReceived(true, fieldValue),
         }),
         attributes: {
           objectValue: true,
@@ -178,39 +235,50 @@ const FIELDS = {
       edit: {
         type: params => (params.subfield ? <EditLineModal {...params} /> : null),
         fieldKey: '',
-        fixedWidth: '100px',
+        fixedWidth: '85px',
         attributes: {
           btnOpenText: 'Edit Line',
           title: 'Edit Line',
           className: 'btn btn-outline-primary',
         },
         getDynamicAttr: ({
-          fieldValue, saveEditLine, parentIndex, rowIndex,
+          fieldValue, saveEditLine, parentIndex, rowIndex, shipmentReceived,
         }) => ({
           fieldValue,
           saveEditLine,
           parentIndex,
           rowIndex,
+          btnOpenDisabled: shipmentReceived || isReceived(true, fieldValue),
         }),
       },
       'recipient.id': {
         type: params => (params.subfield ? <SelectField {...params} /> : null),
+        fieldKey: '',
         label: 'Recipient',
-        getDynamicAttr: ({ users }) => ({
+        getDynamicAttr: ({ users, shipmentReceived, fieldValue }) => ({
           options: users,
+          disabled: shipmentReceived || isReceived(true, fieldValue),
         }),
+      },
+      comment: {
+        type: params => (params.subfield ? <TextField {...params} /> : null),
+        fieldKey: '',
+        label: 'Comment',
+        fixedWidth: '110px',
       },
     },
   },
   buttonsBottom: {
-    // eslint-disable-next-line react/prop-types
-    type: ({ autofillLines, onSave }) => (
-      <div className="my-3 text-center">
-        <button type="button" className="btn btn-outline-success margin-bottom-lg mr-3" onClick={() => autofillLines()}>
+    type: ({
+      // eslint-disable-next-line react/prop-types
+      autofillLines, onSave, saveDisabled, shipmentReceived,
+    }) => (
+      <div className="my-1 text-center">
+        <button type="button" className="btn btn-outline-success mr-3 btn-xs" disabled={shipmentReceived} onClick={() => autofillLines()}>
           Autofill quantities
         </button>
-        <button type="button" className="btn btn-outline-success margin-bottom-lg" onClick={() => onSave()}>Save</button>
-        <button type="submit" className="btn btn-outline-primary float-right btn-form mt-4 mb-4">Next</button>
+        <button type="button" className="btn btn-outline-success btn-xs" disabled={saveDisabled || shipmentReceived} onClick={() => onSave()}>Save</button>
+        <button type="submit" className="btn btn-outline-primary float-right btn-form btn-xs" disabled={saveDisabled || shipmentReceived}>Next</button>
       </div>),
   },
 };
@@ -229,10 +297,15 @@ const FIELDS = {
  */
 class PartialReceivingPage extends Component {
   static autofillLine(clearValue, shipmentItem) {
+    if (isReceived(true, shipmentItem)) {
+      return shipmentItem;
+    }
+    const autofillQuantity = _.toInteger(shipmentItem.quantityShipped) -
+          _.toInteger(shipmentItem.quantityReceived);
+
     return {
       ...shipmentItem,
-      quantityReceiving: clearValue ? null
-        : _.toInteger(shipmentItem.quantityShipped) - _.toInteger(shipmentItem.quantityReceived),
+      quantityReceiving: clearValue || autofillQuantity < 0 ? null : autofillQuantity,
     };
   }
 
@@ -268,10 +341,13 @@ class PartialReceivingPage extends Component {
       const containers = update(this.props.formValues.containers, {
         [rowIndex]: {
           shipmentItems: {
-            $apply: items => (!items ? [] : items.map(item => ({
-              ...item,
-              binLocation: location,
-            }))),
+            $apply: items => (!items ? [] : items.map((item) => {
+              if (isReceived(true, item)) {
+                return item;
+              }
+
+              return { ...item, binLocation: location };
+            })),
           },
         },
       });
@@ -367,6 +443,10 @@ class PartialReceivingPage extends Component {
             saveEditLine: this.saveEditLine,
             bins: this.props.bins,
             users: this.props.users,
+            hasBinLocationSupport: this.props.hasBinLocationSupport,
+            locationId: this.props.locationId,
+            saveDisabled: !isAnyItemSelected(this.props.formValues.containers),
+            shipmentReceived: this.props.formValues.shipmentStatus === 'RECEIVED',
           }))}
       </div>
     );
@@ -376,6 +456,7 @@ class PartialReceivingPage extends Component {
 const mapStateToProps = state => ({
   usersFetched: state.users.fetched,
   users: state.users.data,
+  hasBinLocationSupport: state.session.currentLocation.hasBinLocationSupport,
 });
 
 export default connect(mapStateToProps, {
@@ -397,12 +478,17 @@ PartialReceivingPage.propTypes = {
   usersFetched: PropTypes.bool.isRequired,
   /** Array of available users  */
   users: PropTypes.arrayOf(PropTypes.shape({})).isRequired,
+  /** Is true when currently selected location supports bins */
+  hasBinLocationSupport: PropTypes.bool.isRequired,
   /** All data in the form */
   formValues: PropTypes.shape({
     containers: PropTypes.arrayOf(PropTypes.shape({})),
+    shipmentStatus: PropTypes.string,
   }),
   /** Array of available bin locations  */
   bins: PropTypes.arrayOf(PropTypes.shape({})),
+  /** Location ID (destination). Needs to be used in /api/products request. */
+  locationId: PropTypes.string.isRequired,
 };
 
 PartialReceivingPage.defaultProps = {
