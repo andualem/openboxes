@@ -83,6 +83,19 @@ class StockMovementController {
 
     }
 
+    def rollback = {
+        try {
+            stockMovementService.rollbackStockMovement(params.id)
+            flash.message = "Successfully rolled back stock movement with ID ${params.id}"
+        } catch (Exception e) {
+            log.warn ("Unable to rollback stock movement with ID ${params.id}: " + e.message)
+            flash.message = "Unable to rollback stock movement with ID ${params.id}: " + e.message
+        }
+
+        redirect(action: "show", id: params.id)
+    }
+
+
     def delete = {
 
         try {
@@ -101,7 +114,7 @@ class StockMovementController {
             }
             flash.message = "Successfully deleted stock movement with ID ${params.id}"
         } catch (Exception e) {
-            log.warn ("Unable to delete stock movement withID ${params.id}: " + e.message)
+            log.warn ("Unable to delete stock movement with ID ${params.id}: " + e.message)
             flash.message = "Unable to delete stock movement with ID ${params.id}: " + e.message
         }
 
@@ -176,7 +189,7 @@ class StockMovementController {
             ]
         }
         String csv = dataService.generateCsv(lineItems)
-        response.setHeader("Content-disposition", "attachment; filename='StockMovementItems-${params.id}.csv'")
+        response.setHeader("Content-disposition", "attachment; filename=\"StockMovementItems-${params.id}.csv\"")
         render(contentType:"text/csv", text: csv.toString(), encoding:"UTF-8")
 	}
 
@@ -200,7 +213,6 @@ class StockMovementController {
             def settings = [separatorChar: ',', skipLines: 1]
             csv.toCsvReader(settings).eachLine { tokens ->
 
-                log.info "Tokens " + tokens.class
                 StockMovementItem stockMovementItem = StockMovementItem.createFromTokens(tokens)
                 stockMovementItem.stockMovement = stockMovement
                 stockMovement.lineItems.add(stockMovementItem)

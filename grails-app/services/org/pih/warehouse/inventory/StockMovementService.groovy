@@ -661,6 +661,7 @@ class StockMovementService {
             requisition.requestNumber = identifierService.generateRequisitionIdentifier()
         }
         requisition.type = RequisitionType.DEFAULT
+        requisition.requisitionTemplate = stockMovement.stocklist
         requisition.description = stockMovement.description
         requisition.destination = stockMovement.destination
         requisition.origin = stockMovement.origin
@@ -1121,8 +1122,12 @@ class StockMovementService {
             throw new IllegalStateException("There are too many shipments associated with stock movement ${requisition.requestNumber}")
         }
 
-        shipmentService.sendShipment(shipments[0], null, user, requisition.origin, stockMovement.dateShipped ?: new Date())
+        try {
+            shipmentService.sendShipment(shipments[0], null, user, requisition.origin, stockMovement.dateShipped ?: new Date())
 
+        } catch (ValidationException e) {
+            throw new IllegalStateException(e.message)
+        }
         // Create temporary receiving area for the Partial Receipt process
         if (grailsApplication.config.openboxes.receiving.createReceivingLocation.enabled && stockMovement.destination.hasBinLocationSupport()) {
             LocationType locationType = LocationType.findByName("Receiving")
@@ -1138,21 +1143,15 @@ class StockMovementService {
 
     void rollbackStockMovement(String id) {
         StockMovement stockMovement = getStockMovement(id)
-        Requisition requisition = stockMovement?.requisition
-        if (requisition) requisitionService.rollbackRequisition(requisition)
 
         // If the shipment has been shipped we can roll it back
+        Requisition requisition = stockMovement?.requisition
         Shipment shipment = stockMovement?.requisition?.shipments[0]
-        if (shipment) {
-            if (shipment.currentStatus == ShipmentStatusCode.SHIPPED) {
-                shipmentService.rollbackLastEvent(shipment)
-            }
-            // If shipment status is any other status except pending then we should throw an error since rolling it
-            // back would cause issues
-            else if (shipment.currentStatus != ShipmentStatusCode.PENDING) {
-                throw new IllegalStateException("Cannot rollback status for shipment ${shipment.shipmentNumber} from ${shipment.currentStatus}")
-            }
-
+        if (shipment && shipment.currentStatus > ShipmentStatusCode.PENDING) {
+            shipmentService.rollbackLastEvent(shipment)
+        }
+        else if (requisition) {
+            requisitionService.rollbackRequisition(requisition)
         }
     }
 
