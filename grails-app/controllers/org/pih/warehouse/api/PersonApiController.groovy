@@ -6,18 +6,18 @@
 * By using this software in any fashion, you are agreeing to be bound by
 * the terms of this license.
 * You must not remove this notice, or any other, from this software.
-**/ 
-package org.pih.warehouse.util
+**/
+package org.pih.warehouse.api
 
-class RequestUtil {
+import grails.converters.JSON
 
-	static boolean isAjax(request) {
-		// If incoming request is in JSON or Accept is JSON, then we should
-		def accept = request.getHeader("Accept")
-		def contentType = request.getHeader("Content-Type")
-		return request.isXhr() ||
-				(contentType && contentType?.contains("application/json") ||
-						(accept && accept?.contains("application/json")))
-	}
+class PersonApiController extends BaseDomainApiController {
 
+    def userService
+
+    def list = {
+        def query = "%" + params.name + "%"
+        def people = userService.findPersons(query, params)
+        render ([data:people] as JSON)
+     }
 }

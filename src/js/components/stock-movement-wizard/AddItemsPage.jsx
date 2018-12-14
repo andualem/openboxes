@@ -250,6 +250,7 @@ const VENDOR_FIELDS = {
         flexWidth: '1.5',
         attributes: {
           dateFormat: 'MM/DD/YYYY',
+          autoComplete: 'off',
         },
       },
       quantityRequested: {
@@ -353,7 +354,7 @@ class AddItemsPage extends Component {
   getFields() {
     if (this.state.values.origin.type === 'SUPPLIER') {
       return VENDOR_FIELDS;
-    } else if (this.state.values.stockList) {
+    } else if (_.get(this.state.values.stocklist, 'id')) {
       return STOCKLIST_FIELDS;
     }
 
@@ -368,7 +369,7 @@ class AddItemsPage extends Component {
    */
   getLineItemsToBeSaved(lineItems) {
     const lineItemsToBeAdded = _.filter(lineItems, item =>
-      !item.statusCode && item.quantityRequested && item.quantityRequested !== '0');
+      !item.statusCode && item.quantityRequested && item.quantityRequested !== '0' && item.product);
     const lineItemsWithStatus = _.filter(lineItems, item => item.statusCode);
     const lineItemsToBeUpdated = [];
     _.forEach(lineItemsWithStatus, (item) => {
@@ -907,7 +908,7 @@ class AddItemsPage extends Component {
             <form onSubmit={handleSubmit}>
               {_.map(this.getFields(), (fieldConfig, fieldName) =>
                 renderFormField(fieldConfig, fieldName, {
-                  stockList: values.stockList,
+                  stocklist: values.stocklist,
                   recipients: this.props.recipients,
                   removeItem: this.removeItem,
                   productsFetch: this.productsFetch,

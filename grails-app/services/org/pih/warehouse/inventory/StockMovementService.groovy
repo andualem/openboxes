@@ -270,6 +270,10 @@ class StockMovementService {
                     for (StockMovementItem subStockMovementItem : stockMovementItem.substitutionItems) {
                         createMissingPicklistItems(subStockMovementItem)
                     }
+                } else if (stockMovementItem.statusCode == 'CHANGED') {
+                    if (!stockMovementItem.requisitionItem?.modificationItem?.picklistItems) {
+                        createMissingPicklistItems(stockMovementItem)
+                    }
                 }
                 else {
                     createMissingPicklistItems(stockMovementItem)
@@ -467,7 +471,7 @@ class StockMovementService {
                 return substitutionItem
             }
         }
-        return availableSubstitutions
+        return availableSubstitutions.findAll { availableItems -> availableItems.quantityAvailable > 0 }
     }
 
     List<SubstitutionItem> getSubstitutionItems(Location location, RequisitionItem requisitionItem) {
@@ -545,13 +549,13 @@ class StockMovementService {
         RequisitionItem requisitionItem = RequisitionItem.load(stockMovementItem.id)
         if (requisitionItem.isSubstituted()) {
             pickPageItems = requisitionItem.substitutionItems.collect {
-                return buildPickPageItem(it)
+                return buildPickPageItem(it, stockMovementItem.sortOrder)
             }
         } else if (requisitionItem.modificationItem) {
-            pickPageItems << buildPickPageItem(requisitionItem.modificationItem)
+            pickPageItems << buildPickPageItem(requisitionItem.modificationItem, stockMovementItem.sortOrder)
         } else {
             if (!requisitionItem.isCanceled()) {
-                pickPageItems << buildPickPageItem(requisitionItem)
+                pickPageItems << buildPickPageItem(requisitionItem, stockMovementItem.sortOrder)
             }
         }
         return pickPageItems
@@ -605,7 +609,7 @@ class StockMovementService {
      * @param requisitionItem
      * @return
      */
-    PickPageItem buildPickPageItem(RequisitionItem requisitionItem) {
+    PickPageItem buildPickPageItem(RequisitionItem requisitionItem, Integer sortOrder) {
 
         PickPageItem pickPageItem = new PickPageItem(requisitionItem: requisitionItem,
                 picklistItems: requisitionItem.picklistItems)
@@ -616,6 +620,7 @@ class StockMovementService {
         List<SuggestedItem> suggestedItems = getSuggestedItems(availableItems, quantityRequired)
         pickPageItem.availableItems = availableItems
         pickPageItem.suggestedItems = suggestedItems
+        pickPageItem.sortOrder = sortOrder
 
         return pickPageItem
     }
@@ -667,7 +672,7 @@ class StockMovementService {
         requisition.origin = stockMovement.origin
         requisition.requestedBy = stockMovement.requestedBy
         requisition.dateRequested = stockMovement.dateRequested
-        requisition.name = stockMovement.generateName();
+        requisition.name = stockMovement.generateName()
 
         addStockListItemsToRequisition(stockMovement, requisition)
         if (requisition.hasErrors() || !requisition.save(flush: true)) {
@@ -684,6 +689,7 @@ class StockMovementService {
                 RequisitionItem requisitionItem = new RequisitionItem()
                 requisitionItem.product = stocklistItem.product
                 requisitionItem.quantity = stocklistItem.quantity
+                requisitionItem.quantityApproved = stocklistItem.quantity
                 requisitionItem.orderIndex = stocklistItem.orderIndex
                 requisition.addToRequisitionItems(requisitionItem)
             }
@@ -702,11 +708,12 @@ class StockMovementService {
         if (stockMovement.description) requisition.description = stockMovement.description
         if (stockMovement.requestedBy) requisition.requestedBy = stockMovement.requestedBy
         if (stockMovement.dateRequested) requisition.dateRequested = stockMovement.dateRequested
-        requisition.name = stockMovement.generateName()
+        requisition.name = RequisitionStatus.ISSUED == requisition.status ? stockMovement.name : stockMovement.generateName()
 
         if (forceUpdate) {
             removeRequisitionItems(requisition)
             addStockListItemsToRequisition(stockMovement, requisition)
+            requisition.requisitionTemplate = stockMovement.stocklist
         } else if (stockMovement.lineItems) {
             stockMovement.lineItems.each { StockMovementItem stockMovementItem ->
                 RequisitionItem requisitionItem
@@ -934,7 +941,7 @@ class StockMovementService {
         shipment.shipmentType = stockMovement.shipmentType?:ShipmentType.get(Constants.DEFAULT_SHIPMENT_TYPE_ID)
 
         // Last step will be to update the generated name
-        shipment.name = stockMovement.generateName()
+        shipment.name = stockMovement.requisition.status == RequisitionStatus.ISSUED ? stockMovement.name : stockMovement.generateName()
 
         if(stockMovement.requisition.status == RequisitionStatus.ISSUED) {
             return shipment
@@ -1122,12 +1129,8 @@ class StockMovementService {
             throw new IllegalStateException("There are too many shipments associated with stock movement ${requisition.requestNumber}")
         }
 
-        try {
-            shipmentService.sendShipment(shipments[0], null, user, requisition.origin, stockMovement.dateShipped ?: new Date())
+        shipmentService.sendShipment(shipments[0], null, user, requisition.origin, stockMovement.dateShipped ?: new Date())
 
-        } catch (ValidationException e) {
-            throw new IllegalStateException(e.message)
-        }
         // Create temporary receiving area for the Partial Receipt process
         if (grailsApplication.config.openboxes.receiving.createReceivingLocation.enabled && stockMovement.destination.hasBinLocationSupport()) {
             LocationType locationType = LocationType.findByName("Receiving")
@@ -1228,7 +1231,8 @@ class StockMovementService {
                             documentType: DocumentGroupCode.PACKING_LIST.name(),
                             contentType : "application/vnd.ms-excel",
                             stepNumber  : 5,
-                            uri         : g.createLink(controller: 'shipment', action: "exportPackingList", id: stockMovement?.shipment?.id, absolute: true)
+                            uri         : g.createLink(controller: 'shipment', action: "exportPackingList", id: stockMovement?.shipment?.id, absolute: true),
+                            hidden      : true
                     ],
                     [
                             name        : g.message(code: "shipping.downloadPackingList.label"),
