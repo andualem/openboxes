@@ -1,4 +1,17 @@
 <%@ page import="org.apache.commons.lang.StringEscapeUtils" %>
+<%
+    def comparator = { a,b ->
+      def itemA = a.retrievePicklistItemsSortedByBinName()[0]
+      def itemB = b.retrievePicklistItemsSortedByBinName()[0]
+      def nameA = itemA?.binLocation?.name
+      def nameB = itemB?.binLocation?.name
+      def orderA = itemA?.sortOrder
+      def orderB = itemB?.sortOrder
+      /* null is > than string */
+      /* if both names are null or both names are equal, then compare sortOrder */
+      return !nameA ? !nameB ? orderA <=> orderB : 1 : !nameB ? -1 : nameA <=> nameB ?: orderA <=> orderB
+    }
+%>
 <div class="page-content">
     <table id="requisition-items" class="fs-repeat-header">
         <thead>
@@ -13,9 +26,9 @@
             <th class="center">${warehouse.message(code: 'inventoryItem.lotNumber.label')}</th>
             <th class="center">${warehouse.message(code: 'inventoryItem.expirationDate.label')}</th>
             <th class="center border-right">${warehouse.message(code: 'requisitionItem.quantityRequested.label')}</th>
-            <th class="center">${warehouse.message(code: 'requisitionItem.quantityPicked.label')}</th>
-            <th class="center">${warehouse.message(code:'requisition.checkedBy.label')}</th>
-            <th class="center">${warehouse.message(code:'requisitionItem.cancelReasonCode.label')}</th>
+            <th class="center">${warehouse.message(code: 'requisitionItem.suggestedPick.label')}</th>
+            <th class="center">${warehouse.message(code:'requisitionItem.confirmedPick.label')}</th>
+            <th class="center">${warehouse.message(code:'stockMovement.comments.label')}</th>
         </tr>
         </thead>
         <tbody>
@@ -30,21 +43,22 @@
 
         </g:unless>
 
-        <g:if test="${order == 'desc'}">
-            <g:set var="sortedRequisitionItems" value="${requisitionItems?.sort() { a,b ->
-                a.retrievePicklistItems()[0]?.binLocation?.name <=> b.retrievePicklistItems()[0]?.binLocation?.name }}"/>
+        <g:if test="${sorted}">
+            <!-- Sort ascending with nulls as highest values -->
+            <g:set var="sortedRequisitionItems" value="${requisitionItems?.sort() { a,b -> comparator(a,b) }}"/>
         </g:if>
-        <g:elseif test="${order == 'asc'}">
-            <g:set var="sortedRequisitionItems" value="${requisitionItems?.sort() { a,b ->
-                b.retrievePicklistItems()[0]?.binLocation?.name <=> a.retrievePicklistItems()[0]?.binLocation?.name }}"/>
-        </g:elseif>
         <g:else>
             <g:set var="sortedRequisitionItems" value="${requisitionItems?.sort()}"/>
         </g:else>
 
         <g:each in="${sortedRequisitionItems}" status="i" var="requisitionItem">
             <g:if test="${picklist}">
-                <g:set var="picklistItems" value="${requisitionItem?.retrievePicklistItems()}"/>
+                <g:if test="${sorted}">
+                    <g:set var="picklistItems" value="${requisitionItem?.retrievePicklistItemsSortedByBinName()}"/>
+                </g:if>
+                <g:else>
+                    <g:set var="picklistItems" value="${requisitionItem?.retrievePicklistItems()}"/>
+                </g:else>
                 <g:set var="numInventoryItem" value="${picklistItems?.size() ?: 1}"/>
             </g:if>
             <g:else>

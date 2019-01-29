@@ -49,7 +49,6 @@ class PutawayService {
                     List<AvailableItem> availableItems = []
 
                     PutawayItem putawayItem = new PutawayItem()
-                    // FIXME Should be PENDING if there are existing putaways that are in-progress
                     putawayItem.putawayStatus = PutawayStatus.READY
                     putawayItem.product = it.product
                     putawayItem.inventoryItem = it.inventoryItem
@@ -64,6 +63,27 @@ class PutawayService {
                 putawayItems.addAll(putawayItemsTemp)
             }
         }
+
+        List<PutawayItem> pendingPutawayItems = getPendingItems(location)
+
+        putawayItems.removeAll { PutawayItem item -> pendingPutawayItems.find {
+            item.currentLocation?.id == it.currentLocation?.id && item.inventoryItem?.id == it.inventoryItem?.id &&
+                    item.product?.id == it.product?.id
+        }}
+
+        putawayItems.addAll(pendingPutawayItems)
+
+        return putawayItems
+    }
+
+    List<PutawayItem> getPendingItems(Location location) {
+        List<Order> orders = Order.findAllByOriginAndOrderTypeCode(location, OrderTypeCode.TRANSFER_ORDER)
+        List<Putaway> putaways = orders.collect { Putaway.createFromOrder(it) }
+        List<PutawayItem> putawayItems = []
+
+        putaways.each { putawayItems.addAll(it.putawayItems.findAll { it.putawayStatus == PutawayStatus.PENDING ||
+                (it.putawayStatus == PutawayStatus.CANCELED && it.splitItems?.any { item -> item.putawayStatus == PutawayStatus.PENDING }) }) }
+
         return putawayItems
     }
 
@@ -187,6 +207,23 @@ class PutawayService {
         return order
     }
 
+    void deletePutawayItem(String id) {
+        OrderItem orderItem = OrderItem.get(id)
+        if (!orderItem) {
+            throw new IllegalArgumentException("No putaway item found with ID ${id}")
+        }
+
+        def splitItems = orderItem.orderItems?.toArray()
+
+        splitItems?.each { OrderItem item ->
+            orderItem.removeFromOrderItems(item)
+            item.order.removeFromOrderItems(item)
+            item.delete()
+        }
+
+        orderItem.order.removeFromOrderItems(orderItem)
+        orderItem.delete()
+    }
 
     OrderItem updateOrderItem(PutawayItem putawayItem, OrderItem orderItem) {
         OrderItemStatusCode orderItemStatusCode =
@@ -205,20 +242,19 @@ class PutawayService {
 
     void validatePutaway(Putaway putaway) {
         putaway.putawayItems.toArray().each { PutawayItem putawayItem ->
-            if (putawayItem.splitItems) {
-                putawayItem.splitItems.each { PutawayItem splitItem ->
-                    validatePutawayItem(splitItem)
-                }
-            }
-            else {
-                validatePutawayItem(putawayItem)
-            }
+            validatePutawayItem(putawayItem)
         }
     }
 
 
     void validatePutawayItem(PutawayItem putawayItem) {
-        validateQuantityAvailable(putawayItem.currentFacility, putawayItem.currentLocation, putawayItem.inventoryItem, putawayItem.quantity)
+        def quantity = putawayItem.quantity
+
+        if (putawayItem.splitItems) {
+            quantity = putawayItem.splitItems.sum { it.quantity }
+        }
+
+        validateQuantityAvailable(putawayItem.currentFacility, putawayItem.currentLocation, putawayItem.inventoryItem, quantity)
     }
 
 
@@ -236,7 +272,7 @@ class PutawayService {
         }
 
         if (quantity > quantityAvailable) {
-            throw new IllegalStateException("Quantity available ${quantityAvailable} is less than quantity to putaway ${quantity}")
+            throw new IllegalStateException("Quantity available ${quantityAvailable} is less than quantity to putaway ${quantity} for product ${inventoryItem.product.productCode} ${inventoryItem.product.name}")
         }
 
     }

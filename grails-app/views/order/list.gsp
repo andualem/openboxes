@@ -1,8 +1,14 @@
+<%@ page import="org.pih.warehouse.order.OrderTypeCode" %>
 <html>
 	<head>
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
         <meta name="layout" content="custom" />
-        <g:set var="entityName" value="${warehouse.message(code: 'orders.label', default: 'Purchase orders')}" />
+        <g:if test="${orderTypeCode == OrderTypeCode.TRANSFER_ORDER}">
+            <g:set var="entityName" value="${warehouse.message(code: 'putAways.label', default: 'Putaways')}" />
+        </g:if>
+        <g:else>
+            <g:set var="entityName" value="${warehouse.message(code: 'orders.label', default: 'Purchase orders')}" />
+        </g:else>
         <title><warehouse:message code="default.list.label" args="[entityName]" /></title>
    	</head>
 	<body>
@@ -28,15 +34,16 @@
 								<tr>
 									<th>${warehouse.message(code: 'default.actions.label')}</th>
 									<th>${warehouse.message(code: 'default.status.label')}</th>
+									<th>${warehouse.message(code: 'default.type.label')}</th>
 									<th>${warehouse.message(code: 'order.orderNumber.label')}</th>
 									<th>${warehouse.message(code: 'default.name.label')}</th>
-									<th>${warehouse.message(code: 'order.origin.label')}</th>
-									<th>${warehouse.message(code: 'order.destination.label')}</th>
+                                    <g:if test="${orderTypeCode != OrderTypeCode.TRANSFER_ORDER}">
+                                        <th>${warehouse.message(code: 'order.origin.label')}</th>
+                                        <th>${warehouse.message(code: 'order.destination.label')}</th>
+                                    </g:if>
                                     <th>${warehouse.message(code: 'order.orderedBy.label')}</th>
 									<th>${warehouse.message(code: 'order.dateOrdered.label')}</th>
 									<th>${warehouse.message(code: 'order.orderItems.label')}</th>
-									<th class="right">${warehouse.message(code: 'order.totalPrice.label', default: 'Total price')}</th>
-									<th>${warehouse.message(code: 'order.currency.label', default: 'Currency')}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -53,13 +60,18 @@
 								<g:each var="orderInstance" in="${orders}" status="i">
 									<g:set var="totalPrice" value="${totalPrice + (orderInstance.totalPrice()?:0)}"/>
 									<tr class="${(i % 2) == 0 ? 'even' : 'odd'}">
-										<td class="middle">
+										<td class="middle" width="1%">
 											<div class="action-menu">
 												<g:render template="/order/actions" model="[orderInstance:orderInstance,hideDelete:true]"/>
 											</div>
 										</td>
 										<td class="middle">
-											<format:metadata obj="${orderInstance?.status}"/>
+											<div class="tag">
+												<format:metadata obj="${orderInstance?.status}"/>
+											</div>
+										</td>
+										<td class="middle">
+											<format:metadata obj="${orderInstance?.orderTypeCode}"/>
 										</td>
 										<td class="middle">
 											<g:link action="show" id="${orderInstance.id}">
@@ -71,26 +83,22 @@
 												${fieldValue(bean: orderInstance, field: "name")}
 											</g:link>
 										</td>
-										<td class="middle">
-											${fieldValue(bean: orderInstance, field: "origin.name")}
-										</td>
-										<td class="middle">
-											${fieldValue(bean: orderInstance, field: "destination.name")}
-										</td>
-                                        <td class="middle center">
+                                        <g:if test="${orderTypeCode != OrderTypeCode.TRANSFER_ORDER}">
+                                            <td class="middle">
+                                                ${fieldValue(bean: orderInstance, field: "origin.name")}
+                                            </td>
+                                            <td class="middle">
+                                                ${fieldValue(bean: orderInstance, field: "destination.name")}
+                                            </td>
+                                        </g:if>
+                                        <td class="middle">
                                             ${orderInstance?.orderedBy?.name}
                                         </td>
 										<td class="middle">
 											<format:date obj="${orderInstance?.dateOrdered}"/>
 										</td>
-										<td class="middle center">
-											${orderInstance?.orderItems?.size()?:0}
-										</td>
-										<td class="middle right">
-											<g:formatNumber number="${orderInstance?.totalPrice()}" />
-										</td>
 										<td class="middle">
-                                            ${grailsApplication.config.openboxes.locale.defaultCurrencyCode}
+											${orderInstance?.orderItems?.size()?:0}
 										</td>
 									</tr>
 								</g:each>
@@ -123,9 +131,9 @@
 		<script type="text/javascript">
 			$(document).ready(function() {
 				$(".clear-all").click(function() {
-					$('#statusStartDate-datepicker').val('');					
+					$('#statusStartDate-datepicker').val('');
 					$('#statusEndDate-datepicker').val('');
-					$('#statusStartDate').val('');					
+					$('#statusStartDate').val('');
 					$('#statusEndDate').val('');
 					$('#totalPrice').val('');
 					$('#description').val('');

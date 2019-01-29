@@ -5,6 +5,8 @@ import update from 'immutability-helper';
 import PropTypes from 'prop-types';
 import Modal from 'react-modal';
 import { confirmAlert } from 'react-confirm-alert';
+import { Translate, getTranslate } from 'react-localize-redux';
+import connect from 'react-redux/es/connect/connect';
 
 import 'react-confirm-alert/src/react-confirm-alert.css';
 import 'react-tippy/dist/tippy.css';
@@ -16,7 +18,7 @@ import Select from '../../utils/Select';
  * Modal window where user can split put-away's line. It has details of the line
  * at the top, including total quantity to be put away. After clicking "add line",
  * a new split line is added. User can select a bin and fill in the quantity to add to that bin.
-*/
+ */
 class SplitLineModal extends Component {
   constructor(props) {
     super(props);
@@ -41,14 +43,14 @@ class SplitLineModal extends Component {
 
     if (putAwayQty < this.props.putawayItem.quantity) {
       confirmAlert({
-        title: 'Confirm split line',
-        message: 'There is still stock in the receiving bin. Do you want to put away the rest of this line?',
+        title: this.props.translate('message.confirmSplitLine.label'),
+        message: this.props.translate('confirmSplitLine.label'),
         buttons: [
           {
-            label: 'Yes',
+            label: this.props.translate('default.yes.label'),
           },
           {
-            label: 'No',
+            label: this.props.translate('default.no.label'),
             onClick: () => this.save(),
           },
         ],
@@ -96,6 +98,10 @@ class SplitLineModal extends Component {
         },
         product: { id: this.props.putawayItem.product.id },
         inventoryItem: { id: this.props.putawayItem.inventoryItem.id },
+        currentLocation: {
+          id: this.props.putawayItem.currentLocation
+            ? this.props.putawayItem.currentLocation.id : null,
+        },
       });
     }
 
@@ -148,7 +154,7 @@ class SplitLineModal extends Component {
           type="button"
           className="btn btn-outline-success btn-xs"
           onClick={() => this.openModal()}
-        >Split line
+        ><Translate id="stockMovement.splitLine.label" />
         </button>
         <Modal
           isOpen={this.state.showModal}
@@ -158,9 +164,9 @@ class SplitLineModal extends Component {
         >
           <div>
             <h3 className="font-weight-bold">{`${this.props.putawayItem.product.productCode} ${this.props.putawayItem.product.name}`}</h3>
-            <div className="font-weight-bold">Expiry: {this.props.putawayItem.inventoryItem.expirationDate}</div>
-            <div className="font-weight-bold">Total QTY: {this.props.putawayItem.quantity}</div>
-            <div className="font-weight-bold">Put away QTY: {this.calculatePutAwayQty()}</div>
+            <div className="font-weight-bold"><Translate id="stockMovement.expiry.label" />: {this.props.putawayItem.inventoryItem.expirationDate}</div>
+            <div className="font-weight-bold"><Translate id="putAway.totalQty.label" />: {this.props.putawayItem.quantity}</div>
+            <div className="font-weight-bold"><Translate id="putAway.putAwayQty.label" />: {this.calculatePutAwayQty()}</div>
           </div>
           <hr />
 
@@ -168,101 +174,105 @@ class SplitLineModal extends Component {
             <table className="table table-striped text-center border">
               <thead>
                 <tr>
-                  <th className="py-1">Put Away Bin</th>
-                  <th className="py-1">Quantity</th>
-                  <th className="py-1">Delete</th>
+                  <th className="py-1"><Translate id="putAway.putAwayBin.label" /></th>
+                  <th className="py-1"><Translate id="stockMovement.quantity.label" /></th>
+                  <th className="py-1"><Translate id="default.button.delete.label" /></th>
                 </tr>
               </thead>
               <tbody>
                 { _.map(this.state.splitItems, (item, index) => (
-                  !item.delete &&
-                  <tr
-                    // eslint-disable-next-line react/no-array-index-key
-                    key={index}
-                  >
-                    <td className={`py-1 ${_.isEmpty(item.putawayLocation.id) ? 'has-error align-middle' : 'align-middle'}`}>
-                      <Select
-                        options={this.props.bins}
-                        objectValue
-                        value={item.putawayLocation}
-                        onChange={value => this.setState({
-                          splitItems: update(this.state.splitItems, {
-                            [index]: {
-                              putawayLocation: { $set: value },
-                            },
-                          }),
-                        })}
-                        className="select-xs"
-                      />
-                    </td>
-                    <td className="py-1 align-middle">
-                      <Tooltip
-                        // eslint-disable-next-line max-len
-                        html={(<div>Sum of all split items quantities cannot be higher than original put-away item quantity</div>)}
-                        disabled={this.isValid()}
-                        theme="transparent"
-                        arrow="true"
-                        delay="150"
-                        duration="250"
-                        hideDelay="50"
-                      >
-                        <div className={!this.isValid() ? 'has-error' : ''}>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={value => this.setState({
-                              splitItems: update(this.state.splitItems, {
-                                [index]: { quantity: { $set: value } },
-                              }),
-                            })}
-                          />
-                        </div>
-                      </Tooltip>
-                    </td>
-                    <td width="120px" className="py-1">
-                      <button
-                        className="btn btn-outline-danger btn-xs"
-                        onClick={() => {
-                          if (this.state.splitItems[index].id) {
-                            this.setState({
-                              splitItems: update(this.state.splitItems, {
-                                [index]: { delete: { $set: true } },
-                              }),
-                            });
-                          } else {
-                            this.setState({
-                              splitItems: update(this.state.splitItems, {
-                                $splice: [
-                                  [index, 1],
-                                ],
-                              }),
-                            });
-                          }
-                        }}
-                      >Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                !item.delete &&
+                <tr
+                  // eslint-disable-next-line react/no-array-index-key
+                  key={index}
+                >
+                  <td className={`py-1 ${_.isEmpty(item.putawayLocation.id) ? 'has-error align-middle' : 'align-middle'}`}>
+                    <Select
+                      options={this.props.bins}
+                      objectValue
+                      value={item.putawayLocation}
+                      onChange={value => this.setState({
+                        splitItems: update(this.state.splitItems, {
+                          [index]: {
+                            putawayLocation: { $set: value },
+                          },
+                        }),
+                      })}
+                      className="select-xs"
+                    />
+                  </td>
+                  <td className="py-1 align-middle">
+                    <Tooltip
+                      // eslint-disable-next-line max-len
+                      html={this.props.translate('putAway.sumOfAll.label')}
+                      disabled={this.isValid()}
+                      theme="transparent"
+                      arrow="true"
+                      delay="150"
+                      duration="250"
+                      hideDelay="50"
+                    >
+                      <div className={!this.isValid() ? 'has-error' : ''}>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={value => this.setState({
+                            splitItems: update(this.state.splitItems, {
+                              [index]: { quantity: { $set: value } },
+                            }),
+                          })}
+                        />
+                      </div>
+                    </Tooltip>
+                  </td>
+                  <td width="120px" className="py-1">
+                    <button
+                      className="btn btn-outline-danger btn-xs"
+                      onClick={() => {
+                        if (this.state.splitItems[index].id) {
+                          this.setState({
+                            splitItems: update(this.state.splitItems, {
+                              [index]: { delete: { $set: true } },
+                            }),
+                          });
+                        } else {
+                          this.setState({
+                            splitItems: update(this.state.splitItems, {
+                              $splice: [
+                                [index, 1],
+                              ],
+                            }),
+                          });
+                        }
+                      }}
+                    ><Translate id="default.button.delete.label" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
               </tbody>
             </table>
             <button
               className="btn btn-outline-success btn-xs"
               onClick={() => this.setState({
-                  splitItems: update(this.state.splitItems, {
-                    $push: [{
-                      quantity: '',
-                      putawayFacility: {
-                        id: this.props.putawayItem.putawayFacility
-                          ? this.props.putawayItem.putawayFacility.id : null,
-                      },
-                      putawayLocation: { id: null },
-                      product: { id: this.props.putawayItem.product.id },
-                      inventoryItem: { id: this.props.putawayItem.inventoryItem.id },
-                    }],
-                  }),
-                })}
-            >Add Line
+                splitItems: update(this.state.splitItems, {
+                  $push: [{
+                    quantity: '',
+                    putawayFacility: {
+                      id: this.props.putawayItem.putawayFacility
+                        ? this.props.putawayItem.putawayFacility.id : null,
+                    },
+                    putawayLocation: { id: null },
+                    product: { id: this.props.putawayItem.product.id },
+                    inventoryItem: { id: this.props.putawayItem.inventoryItem.id },
+                    currentLocation: {
+                      id: this.props.putawayItem.currentLocation
+                      ? this.props.putawayItem.currentLocation.id : null,
+                    },
+                  }],
+                }),
+              })}
+            ><Translate id="default.button.addLine.label" />
             </button>
           </div>
 
@@ -273,13 +283,13 @@ class SplitLineModal extends Component {
               className="btn btn-outline-success btn-sm"
               disabled={!this.isValid() || !this.isBinSelected()}
               onClick={() => this.onSave()}
-            >Save
+            ><Translate id="default.button.save.label" />
             </button>
             <button
               type="button"
               className="btn btn-outline-secondary btn-sm"
               onClick={() => this.closeModal()}
-            >Cancel
+            ><Translate id="default.button.cancel.label" />
             </button>
           </div>
         </Modal>
@@ -288,7 +298,11 @@ class SplitLineModal extends Component {
   }
 }
 
-export default SplitLineModal;
+const mapStateToProps = state => ({
+  translate: getTranslate(state.localize),
+});
+
+export default connect(mapStateToProps)(SplitLineModal);
 
 SplitLineModal.propTypes = {
   /** Function saving split line's items */
@@ -319,11 +333,15 @@ SplitLineModal.propTypes = {
     putawayLocation: PropTypes.shape({
       id: PropTypes.string,
     }),
+    currentLocation: PropTypes.shape({
+      id: PropTypes.string,
+    }),
   }),
   /** An array of items to split */
   splitItems: PropTypes.arrayOf(PropTypes.shape({})),
   /** An array of available bin locations */
   bins: PropTypes.arrayOf(PropTypes.shape({})),
+  translate: PropTypes.func.isRequired,
 };
 
 SplitLineModal.defaultProps = {

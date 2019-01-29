@@ -4,29 +4,19 @@ import { connect } from 'react-redux';
 import ReactTable from 'react-table';
 import PropTypes from 'prop-types';
 import Alert from 'react-s-alert';
+import { getTranslate, Translate } from 'react-localize-redux';
+import { confirmAlert } from 'react-confirm-alert';
 
 import 'react-table/react-table.css';
+import 'react-confirm-alert/src/react-confirm-alert.css';
 
 import customTreeTableHOC from '../../utils/CustomTreeTable';
 import apiClient, { parseResponse, flattenRequest } from '../../utils/apiClient';
 import { showSpinner, hideSpinner } from '../../actions';
 import Filter from '../../utils/Filter';
 
+
 const SelectTreeTable = (customTreeTableHOC(ReactTable));
-
-/* eslint-disable no-underscore-dangle */
-/* eslint-disable no-param-reassign */
-
-function getNodes(data, node = []) {
-  data.forEach((item) => {
-    if (Object.prototype.hasOwnProperty.call(item, '_subRows') && item._subRows) {
-      node = getNodes(item._subRows, node);
-    } else {
-      node.push(item._original);
-    }
-  });
-  return node;
-}
 
 /**
  * The last page of put-away which shows everything that user has chosen to put away.
@@ -66,12 +56,24 @@ class PutAwayCheckPage extends Component {
         ...putAway,
         putawayItems: PutAwayCheckPage.processSplitLines(putAway.putawayItems),
       },
-      completed: false,
+      completed: putAway.putawayStatus === 'COMPLETED',
       columns,
       pivotBy,
       expanded,
-      expandedRowsCount: 0,
     };
+
+    this.confirmPutaway = this.confirmPutaway.bind(this);
+    this.save = this.save.bind(this);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    this.setState({
+      putAway: {
+        ...nextProps.putAway,
+        putawayItems: PutAwayCheckPage.processSplitLines(nextProps.putAway.putawayItems),
+      },
+      completed: nextProps.putAway.putawayStatus === 'COMPLETED',
+    });
   }
 
   /**
@@ -88,12 +90,7 @@ class PutAwayCheckPage extends Component {
       }
     });
 
-    const allCurrentRows = this.selectTable
-      .getWrappedInstance().getResolvedState().sortedData;
-    const expandedRows = _.at(allCurrentRows, expandedRecordsIds);
-    const expandedRowsCount = getNodes(expandedRows).length;
-
-    this.setState({ expanded, expandedRowsCount });
+    this.setState({ expanded });
   };
 
   /**
@@ -102,48 +99,48 @@ class PutAwayCheckPage extends Component {
    */
   getColumns = () => [
     {
-      Header: 'Code',
+      Header: <Translate id="stockMovement.code.label" />,
       accessor: 'product.productCode',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Name',
+      Header: <Translate id="stockMovement.name.label" />,
       accessor: 'product.name',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Lot/Serial No.',
+      Header: <Translate id="stockMovement.lotSerialNo.label" />,
       accessor: 'inventoryItem.lotNumber',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Expiry',
+      Header: <Translate id="stockMovement.expiry.label" />,
       accessor: 'inventoryItem.expirationDate',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Recipient',
+      Header: <Translate id="stockMovement.recipient.label" />,
       accessor: 'recipient.name',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'QTY',
+      Header: <Translate id="putAway.qty.label" />,
       accessor: 'quantity',
       style: { whiteSpace: 'normal' },
       Cell: props => <span>{props.value ? props.value.toLocaleString('en-US') : props.value}</span>,
       Filter,
     }, {
-      Header: 'Current bin',
+      Header: <Translate id="putAway.currentBin.label" />,
       accessor: 'currentBins',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Put Away Bin',
+      Header: <Translate id="putAway.putAwayBin.label" />,
       accessor: 'putawayLocation.name',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Stock Movement',
+      Header: <Translate id="stockMovement.label" />,
       accessor: 'stockMovement.name',
       style: { whiteSpace: 'normal' },
       Expander: ({ isExpanded }) => (
@@ -163,9 +160,9 @@ class PutAwayCheckPage extends Component {
    */
   toggleTree = () => {
     if (this.state.pivotBy.length) {
-      this.setState({ pivotBy: [], expanded: {}, expandedRowsCount: 0 });
+      this.setState({ pivotBy: [], expanded: {} });
     } else {
-      this.setState({ pivotBy: ['stockMovement.name'], expanded: {}, expandedRowsCount: 0 });
+      this.setState({ pivotBy: ['stockMovement.name'], expanded: {} });
     }
   };
 
@@ -176,15 +173,26 @@ class PutAwayCheckPage extends Component {
    * @param {object} filter
    * @public
    */
-  filterMethod = (filter, row) =>
-    (row[filter.id] !== undefined ?
-      String(row[filter.id].toLowerCase()).includes(filter.value.toLowerCase()) : true);
+  // eslint-disable-next-line no-underscore-dangle
+  filterMethod = (filter, row) => (row._aggregated || row._groupedByPivot
+    || _.toString(row[filter.id]).toLowerCase().includes(filter.value.toLowerCase()));
 
   /**
    * Sends all changes made by user in this step of put-away to API and updates data.
    * @public
    */
   completePutAway() {
+    const isBinLocationChosen = !_.some(this.props.putAway.putawayItems, putAwayItem =>
+      _.isNull(putAwayItem.putawayLocation.id));
+
+    if (!isBinLocationChosen) {
+      this.confirmPutaway();
+    } else {
+      this.save();
+    }
+  }
+
+  save() {
     this.props.showSpinner();
     const url = `/openboxes/api/putaways?location.id=${this.props.locationId}`;
     const payload = {
@@ -193,7 +201,10 @@ class PutAwayCheckPage extends Component {
       putawayItems: _.map(this.props.putAway.putawayItems, item => ({
         ...item,
         putawayStatus: 'COMPLETED',
-        splitItems: _.map(item.splitItems, splitItem => ({ ...splitItem, putawayStatus: 'COMPLETED' })),
+        splitItems: _.map(item.splitItems, splitItem => ({
+          ...splitItem,
+          putawayStatus: 'COMPLETED',
+        })),
       })),
     };
 
@@ -208,7 +219,7 @@ class PutAwayCheckPage extends Component {
 
         this.props.hideSpinner();
 
-        Alert.success('Put-Away was successfully completed!');
+        Alert.success(this.props.translate('alert.putAwayCompleted.label'));
 
         this.setState({
           putAway: {
@@ -219,6 +230,28 @@ class PutAwayCheckPage extends Component {
         });
       })
       .catch(() => this.props.hideSpinner());
+  }
+
+
+  /**
+   * Shows transition confirmation dialog if there are items with the same code.
+   * @param {function} onConfirm
+   * @public
+   */
+  confirmPutaway() {
+    confirmAlert({
+      title: this.props.translate('message.confirmPutAway.label'),
+      message: this.props.translate('confirmPutAway.message'),
+      buttons: [
+        {
+          label: this.props.translate('default.yes.label'),
+          onClick: () => this.save(),
+        },
+        {
+          label: this.props.translate('default.no.label'),
+        },
+      ],
+    });
   }
 
   render() {
@@ -236,39 +269,39 @@ class PutAwayCheckPage extends Component {
       };
 
     return (
-      <div className="container-fluid pt-2">
-        <h1>Put Away - {this.state.putAway.putawayNumber}</h1>
+      <div className="main-container">
+        <h1><Translate id="putAway.putAway.label" /> {this.state.putAway.putawayNumber}</h1>
         {
           this.state.completed ?
             <div className="d-flex justify-content-between mb-2">
               <div>
-                Show by:
+                <Translate id="putAway.showBy.label" />:
                 <button
                   className="btn btn-primary ml-2 btn-xs"
                   data-toggle="button"
                   aria-pressed="false"
                   onClick={toggleTree}
                 >
-                  {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+                  {pivotBy && pivotBy.length ? <Translate id="stockMovement.label" /> : <Translate id="product.label" /> }
                 </button>
               </div>
               <button
                 type="button"
                 className="btn btn-outline-primary float-right mb-2 btn-xs"
                 onClick={() => this.props.firstPage()}
-              >Go back to put-away list
+              ><Translate id="putAway.goBack.label" />
               </button>
             </div> :
             <div className="d-flex justify-content-between mb-2">
               <div>
-                Show by:
+                <Translate id="putAway.showBy.label" />:
                 <button
                   className="btn btn-primary ml-2 btn-xs"
                   data-toggle="button"
                   aria-pressed="false"
                   onClick={toggleTree}
                 >
-                  {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+                  {pivotBy && pivotBy.length ? <Translate id="stockMovement.label" /> : <Translate id="product.label" /> }
                 </button>
               </div>
               <div>
@@ -280,13 +313,13 @@ class PutAwayCheckPage extends Component {
                     expanded: this.state.expanded,
                   })}
                   className="btn btn-outline-primary mb-2 btn-xs mr-2"
-                >Edit
+                ><Translate id="default.button.edit.label" />
                 </button>
                 <button
                   type="button"
                   onClick={() => this.completePutAway()}
                   className="btn btn-outline-primary float-right mb-2 btn-xs"
-                >Complete Put Away
+                ><Translate id="putAway.completePutAway.label" />
                 </button>
               </div>
             </div>
@@ -300,10 +333,7 @@ class PutAwayCheckPage extends Component {
               className="-striped -highlight"
               {...extraProps}
               defaultPageSize={Number.MAX_SAFE_INTEGER}
-              minRows={pivotBy && pivotBy.length ? this.state.expandedRowsCount : 0}
-              style={{
-                height: '500px',
-              }}
+              minRows={0}
               showPaginationBottom={false}
               filterable
               defaultFilterMethod={this.filterMethod}
@@ -317,14 +347,14 @@ class PutAwayCheckPage extends Component {
               type="button"
               className="btn btn-outline-primary float-right my-2 btn-xs"
               onClick={() => this.props.firstPage()}
-            >Go back to put-away list
+            ><Translate id="putAway.goBack.label" />
             </button> :
             <div>
               <button
                 type="button"
                 onClick={() => this.completePutAway()}
                 className="btn btn-outline-primary float-right my-2 btn-xs"
-              >Complete Put Away
+              ><Translate id="putAway.completePutAway.label" />
               </button>
               <button
                 type="button"
@@ -343,7 +373,11 @@ class PutAwayCheckPage extends Component {
   }
 }
 
-export default connect(null, { showSpinner, hideSpinner })(PutAwayCheckPage);
+const mapStateToProps = state => ({
+  translate: getTranslate(state.localize),
+});
+
+export default connect(mapStateToProps, { showSpinner, hideSpinner })(PutAwayCheckPage);
 
 PutAwayCheckPage.propTypes = {
   /** Function called when data is loading */
@@ -358,6 +392,8 @@ PutAwayCheckPage.propTypes = {
   putAway: PropTypes.shape({
     /** An array of all put-away's items */
     putawayItems: PropTypes.arrayOf(PropTypes.shape({})),
+    /** Status of the put-away */
+    putawayStatus: PropTypes.string,
   }),
   /** An array of available attributes after which a put-away can be sorted by */
   pivotBy: PropTypes.arrayOf(PropTypes.string),
@@ -365,10 +401,11 @@ PutAwayCheckPage.propTypes = {
   expanded: PropTypes.shape({}),
   /** Location ID (currently chosen). To be used in internalLocations and putaways requests. */
   locationId: PropTypes.string.isRequired,
+  translate: PropTypes.func.isRequired,
 };
 
 PutAwayCheckPage.defaultProps = {
-  putAway: [],
+  putAway: {},
   pivotBy: ['stockMovement.name'],
   expanded: {},
 };

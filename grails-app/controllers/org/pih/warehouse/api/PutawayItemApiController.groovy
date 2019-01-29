@@ -7,11 +7,17 @@
 * the terms of this license.
 * You must not remove this notice, or any other, from this software.
 **/ 
-package org.pih.warehouse.inventory
+package org.pih.warehouse.api
+/**
+ * Should not extend BaseDomainApiController since putawayItem is not a valid domain.
+ */
+class PutawayItemApiController {
 
+    def putawayService
 
+    def delete = {
+        putawayService.deletePutawayItem(params.id)
 
-class StockCardController {
-	
-
+        render status: 204
+    }
 }

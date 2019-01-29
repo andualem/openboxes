@@ -30,11 +30,14 @@ import org.pih.warehouse.auth.AuthService
 import org.pih.warehouse.core.Constants
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.Tag
+import org.pih.warehouse.core.User
 import org.pih.warehouse.importer.ImportDataCommand
 import org.pih.warehouse.importer.ImporterUtil
 import org.pih.warehouse.importer.InventoryExcelImporter
 import org.pih.warehouse.product.Category
 import org.pih.warehouse.product.Product
+import org.pih.warehouse.product.ProductCatalog
+import org.pih.warehouse.product.ProductCatalogItem
 import org.pih.warehouse.product.ProductException
 import org.pih.warehouse.product.ProductGroup
 import org.pih.warehouse.reporting.Consumption
@@ -66,6 +69,7 @@ class InventoryService implements ApplicationContextAware {
 	def productService
 	def identifierService
     def messageService
+	def locationService
 	//def authService
 
 	ApplicationContext applicationContext
@@ -254,6 +258,7 @@ class InventoryService implements ApplicationContextAware {
 		log.info "searchTerms = " + searchTerms
 		log.debug("get products: " + commandInstance?.warehouseInstance)
 		log.info "command.tag  = " + commandInstance.tags
+		log.info "command.catalog  = " + commandInstance.catalogs
 
 		def products = []
 
@@ -263,11 +268,16 @@ class InventoryService implements ApplicationContextAware {
 			products = getProductsByTags(commandInstance.tags, commandInstance?.maxResults as int, commandInstance?.offset as int)
 		}
 
+		// User wants to view all products that match the given catalog
+		else if (commandInstance.catalogs) {
+			commandInstance.numResults = countProductsByCatalogs(commandInstance.catalogs)
+			products = getProductsByCatalogs(commandInstance.catalogs, commandInstance?.maxResults as int, commandInstance?.offset as int)
+		}
+
         // User wants to view all products in the given shipment
         else if (commandInstance.shipment) {
             commandInstance.numResults = countProductsByShipment(commandInstance.shipment)
             products = getProductsByShipment(commandInstance.shipment, commandInstance?.maxResults as int, commandInstance?.offset as int)
-
         }
         else {
 			// Get all products, including hidden ones
@@ -1170,6 +1180,33 @@ class InventoryService implements ApplicationContextAware {
 		}
 		//log.debug "Results " + results[0]
 		return results[0]
+	}
+
+	/**
+	 * Get all products in the given catalog
+	 *
+	 * @param inputCatalogs
+	 * @return
+	 */
+	def getProductsByCatalogs(List<String> inputCatalogs, int max, int offset) {
+		log.info "Get products by catalogs=${inputCatalogs} max=${max} offset=${offset}"
+		def products = []
+		for (inputCatalog in inputCatalogs) {
+			def productInstance = ProductCatalog.get(inputCatalog)
+			def productsInCatalog = productInstance.productCatalogItems.product
+			products += productsInCatalog
+		}
+		return products
+	}
+
+	def countProductsByCatalogs(List inputCatalogs) {
+		log.debug "Get products by catalogs: " + inputCatalogs
+		def result = 0
+		for (inputCatalog in inputCatalogs) {
+			def productInstance = ProductCatalog.get(inputCatalog)
+			result += productInstance.productCatalogItems.size()
+		}
+		return result
 	}
 
 
@@ -3423,11 +3460,11 @@ class InventoryService implements ApplicationContextAware {
 	/**
 	 * @return	a unique identifier to be assigned to a transaction
 	 */
-	public String generateTransactionNumber() {
+	String generateTransactionNumber() {
 		return identifierService.generateTransactionIdentifier()
 	}
 
-    public List<Transaction> getCreditsBetweenDates(List<Location> fromLocations, List<Location> toLocations, Date fromDate, Date toDate) {
+    List<Transaction> getCreditsBetweenDates(List<Location> fromLocations, List<Location> toLocations, Date fromDate, Date toDate) {
         def transactions = Transaction.createCriteria().list() {
             transactionType {
                 eq("transactionCode", TransactionCode.CREDIT)
@@ -3443,17 +3480,33 @@ class InventoryService implements ApplicationContextAware {
         return transactions
     }
 
-    public List<Transaction> getDebitsBetweenDates(List<Location> fromLocations, List<Location> toLocations, Date fromDate, Date toDate) {
+	List<Transaction> getDebitsBetweenDates(List<Location> fromLocations, List<Location> toLocations, Date fromDate, Date toDate) {
+		getDebitsBetweenDates(fromLocations, toLocations, fromDate, toDate, null)
+	}
+
+
+	List<Transaction> getDebitsBetweenDates(List<Location> fromLocations, List<Location> toLocations, Date fromDate, Date toDate, List transactionTypes) {
         def transactions = Transaction.createCriteria().list() {
             transactionType {
                 eq("transactionCode", TransactionCode.DEBIT)
             }
-            if (toLocations) {
-                'in'("destination", toLocations)
-            }
-            //eq("inventory", fromLocation.inventory)
+			if (transactionTypes) {
+				'in'("transactionType", transactionTypes)
+			}
+			if (toLocations) {
+				or {
+					'in'("destination", toLocations)
+					isNull("destination")
+				}
+			}
             if (fromLocations) {
-                'in'("inventory", fromLocations.collect { it.inventory })
+				and {
+					'in'("inventory", fromLocations.collect { it.inventory })
+
+					not {
+						'in'("destination", fromLocations)
+					}
+				}
             }
             between('transactionDate', fromDate, toDate)
         }
@@ -3617,18 +3670,31 @@ class InventoryService implements ApplicationContextAware {
     }
 
 
-    def getQuantityOnHand(Product product) {
+    def getCurrentStockAllLocations(Product product, Location currentLocation, User currentUser) {
         log.info ("Get getQuantityOnHand() for product ${product?.name} at all locations")
-        def quantityMap = [:]
-        def locations = Location.list()
-        locations.each { location ->
-            if (location.inventory && location.isWarehouse()) {
-                def quantity = getQuantityOnHand(location, product)
-                if (quantity) {
-                    quantityMap[location] = quantity
-                }
-            }
+        def locations = locationService.getLoginLocations(currentLocation)
+
+		locations = locations.findAll { Location location ->
+			location.inventory && location.isWarehouse() && currentUser.getEffectiveRoles(location) }
+
+        locations = locations.collect { Location location ->
+			def quantity = getQuantityOnHand(location, product)?:0
+			def unitPrice = product?.pricePerUnit?:0
+			[
+					location: location,
+					locationGroup: location?.locationGroup,
+					quantity: quantity,
+					value: quantity * unitPrice
+			]
         }
+
+		locations = locations.findAll { it?.quantity > 0 }
+		locations.sort { it.locationGroup }
+
+		def quantityMap = locations.groupBy { it?.locationGroup }.collect{ k, v ->
+			[(k):[totalValue: v.value.sum(), totalQuantity: v.quantity.sum(), locations: v]]
+		}
+
         return quantityMap
     }
 
@@ -4622,7 +4688,7 @@ class InventoryService implements ApplicationContextAware {
             def criteria = RequisitionItem.createCriteria()
             def results = criteria.list {
                 requisition {
-                    eq("destination", location)
+                    eq("origin", location)
                     between("dateRequested", date-30, date)
                 }
                 projections {

@@ -2,6 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { Field } from 'react-final-form';
 import { Tooltip } from 'react-tippy';
+import { Translate } from 'react-localize-redux';
 
 import 'react-tippy/dist/tippy.css';
 
@@ -12,7 +13,9 @@ const LabelField = (props) => {
   } = props;
   const dynamicAttr = getDynamicAttr ? getDynamicAttr(props) : {};
   const attr = { ...attributes, ...dynamicAttr };
-  const { formatValue, showValueTooltip, ...otherAttr } = attr;
+  const {
+    formatValue, tooltipValue, showValueTooltip, ...otherAttr
+  } = attr;
   const className = `text-truncate ${otherAttr.className ? otherAttr.className : ''}`;
 
   const renderField = ({ input: { value } }) => (
@@ -20,7 +23,7 @@ const LabelField = (props) => {
       <div className="row">
         {
             typeof FieldLabel === 'string' ?
-              <label htmlFor={attr.id} className="col-md-2 col-form-label col-form-label-xs text-right">{ FieldLabel }</label> :
+              <label htmlFor={attr.id} className="col-md-2 col-form-label col-form-label-xs text-right"><Translate id={FieldLabel} /></label> :
               <FieldLabel />
           }
         <div className="col-md-4 align-self-center">
@@ -39,10 +42,9 @@ const LabelField = (props) => {
     return (
       <div className="form-group my-0">
         <Tooltip
-          html={(<div>{formattedValue}</div>)}
+          html={tooltipValue || (<div>{formattedValue}</div>)}
           disabled={!showValueTooltip}
           theme="transparent"
-          arrow="true"
           delay="150"
           duration="250"
           hideDelay="50"

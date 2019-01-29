@@ -91,12 +91,31 @@ class StockMovementService {
 
 
     StockMovement updateStockMovement(StockMovement stockMovement, Boolean forceUpdate) {
+        // TODO: This function is a very good candidate for future refactor. This should be better split in case of
+        // updating stock movement basing on origin type
+
         log.info "Update stock movement " + new JSONObject(stockMovement.toJson()).toString(4)
 
         Requisition requisition = updateRequisition(stockMovement, forceUpdate)
 
         if (stockMovement.origin.isSupplier()) {
+
+            // After creating stock movement from Requisition in this case (when origin.isSupplier()), those 5 values were not
+            // populated. As a quick fix, data that came from request is preserved and reapplied to SM afterwards.
+
+            def driverName = stockMovement.driverName
+            def trackingNumber = stockMovement.trackingNumber
+            def comments = stockMovement.comments
+            def shipmentType = stockMovement.shipmentType
+            def dateShipped = stockMovement.dateShipped
+
             stockMovement = StockMovement.createFromRequisition(requisition)
+
+            if (driverName) stockMovement.driverName = driverName
+            if (trackingNumber) stockMovement.trackingNumber = trackingNumber
+            if (comments) stockMovement.comments = comments
+            stockMovement.shipmentType = shipmentType
+            stockMovement.dateShipped = dateShipped
         }
 
         log.info "Date shipped: " + stockMovement.dateShipped
@@ -137,8 +156,16 @@ class StockMovementService {
     def getStockMovements(StockMovement stockMovement, Integer maxResults, Integer offset) {
         log.info "Get stock movements: " + stockMovement.toJson()
 
+        log.info "Stock movement: ${stockMovement?.shipmentStatusCode}"
+
         def requisitions = Requisition.createCriteria().list(max: maxResults, offset: offset) {
             eq("isTemplate", Boolean.FALSE)
+
+            if (stockMovement?.receiptStatusCode) {
+                shipments {
+                    eq("currentStatus", stockMovement.receiptStatusCode)
+                }
+            }
 
             if (stockMovement?.identifier || stockMovement.name || stockMovement?.description) {
                 or {
@@ -177,6 +204,9 @@ class StockMovementService {
             }
             if (stockMovement.requestedBy) {
                 eq("requestedBy", stockMovement.requestedBy)
+            }
+            if (stockMovement.createdBy) {
+                eq("createdBy", stockMovement.createdBy)
             }
 
             //if (offset) firstResult(offset)
@@ -395,6 +425,34 @@ class StockMovementService {
         picklist.save(flush: true)
     }
 
+    void createOrUpdatePicklistItem(StockMovement stockMovement) {
+
+        Requisition requisition = stockMovement.requisition
+
+        Picklist picklist = requisition?.picklist
+        if (!picklist) {
+            picklist = new Picklist()
+            picklist.requisition = requisition
+        }
+
+        stockMovement.pickPage.pickPageItems.each { pickPageItem ->
+            pickPageItem.picklistItems?.toArray()?.each { PicklistItem picklistItem ->
+                // If one does not exist add it to the list
+                if (!picklistItem.id) {
+                    picklist.addToPicklistItems(picklistItem)
+                }
+
+                // Remove from picklist
+                if (picklistItem.quantity <= 0) {
+                    picklist.removeFromPicklistItems(picklistItem)
+                    picklistItem.requisitionItem?.removeFromPicklistItems(picklistItem)
+                }
+            }
+        }
+
+        picklist.save()
+    }
+
     /**
      * Get a list of suggested items for the given stock movement item.
      *
@@ -561,23 +619,21 @@ class StockMovementService {
         return pickPageItems
     }
 
-    Integer calculateTotalMonthlyQuantity(StockMovementItem stockMovementItem) {
-        Integer totalMonthlyQuantity = 0
-        RequisitionItem requisitionItem = stockMovementItem.requisitionItem
+    Float calculateMonthlyStockListQuantity(StockMovementItem stockMovementItem) {
+        Integer monthlyStockListQuantity = 0
+        RequisitionItem requisitionItem = RequisitionItem.load(stockMovementItem.id)
         StockMovement stockMovement = stockMovementItem.stockMovement
-        List<Requisition> stocklists = requisitionService.getRequisitionTemplates(stockMovement.origin, stockMovement.destination)
+        List<Requisition> stocklists = requisitionService.getRequisitionTemplates(stockMovement.origin)
         if (stocklists) {
             stocklists.each { stocklist ->
-                // Find matching stocklist items and sum them up
                 def stocklistItems = stocklist.requisitionItems.findAll { it?.product?.id == requisitionItem?.product?.id }
                 if (stocklistItems) {
-                    totalMonthlyQuantity += stocklistItems.sum { it.quantity }
+                    monthlyStockListQuantity += stocklistItems.sum { Math.ceil(((Double) it?.quantity) / it?.requisition?.replenishmentPeriod * 30) }
                 }
             }
         }
-        return totalMonthlyQuantity
+        return monthlyStockListQuantity
     }
-
 
     EditPageItem buildEditPageItem(StockMovementItem stockMovementItem) {
         EditPageItem editPageItem = new EditPageItem()
@@ -588,19 +644,19 @@ class StockMovementService {
         List<SubstitutionItem> substitutionItems = getSubstitutionItems(location, requisitionItem)
 
 
-        // Calculate total monthly quantity
-        Integer totalMonthlyQuantity = null //calculateTotalMonthlyQuantity(stockMovementItem)
+        // Calculate monthly stock
+        Integer monthlyStockListQuantity = calculateMonthlyStockListQuantity(stockMovementItem)
 
         editPageItem.requisitionItem = requisitionItem
         editPageItem.productId = requisitionItem.product.id
         editPageItem.productCode = requisitionItem.product.productCode
         editPageItem.productName = requisitionItem.product.name
-        editPageItem.totalMonthlyQuantity = totalMonthlyQuantity
         editPageItem.quantityRequested = requisitionItem.quantity
-        editPageItem.quantityConsumed = null
+        editPageItem.quantityConsumed = monthlyStockListQuantity
         editPageItem.availableSubstitutions = availableSubstitutions
         editPageItem.availableItems = availableItems
         editPageItem.substitutionItems = substitutionItems
+        editPageItem.sortOrder = stockMovementItem.sortOrder
         return editPageItem
     }
 
@@ -714,7 +770,8 @@ class StockMovementService {
             removeRequisitionItems(requisition)
             addStockListItemsToRequisition(stockMovement, requisition)
             requisition.requisitionTemplate = stockMovement.stocklist
-        } else if (stockMovement.lineItems) {
+        }
+        else if (stockMovement.lineItems) {
             stockMovement.lineItems.each { StockMovementItem stockMovementItem ->
                 RequisitionItem requisitionItem
                 // Try to find a matching stock movement item
@@ -1119,17 +1176,13 @@ class StockMovementService {
         User user = AuthService.currentUser.get()
         StockMovement stockMovement = getStockMovement(id)
         Requisition requisition = stockMovement.requisition
-        def shipments = requisition.shipments
+        def shipment = requisition.shipment
 
-        if (!shipments) {
+        if (!shipment) {
             throw new IllegalStateException("There are no shipments associated with stock movement ${requisition.requestNumber}")
         }
 
-        if (shipments.size() > 1) {
-            throw new IllegalStateException("There are too many shipments associated with stock movement ${requisition.requestNumber}")
-        }
-
-        shipmentService.sendShipment(shipments[0], null, user, requisition.origin, stockMovement.dateShipped ?: new Date())
+        shipmentService.sendShipment(shipment, null, user, requisition.origin, stockMovement.dateShipped ?: new Date())
 
         // Create temporary receiving area for the Partial Receipt process
         if (grailsApplication.config.openboxes.receiving.createReceivingLocation.enabled && stockMovement.destination.hasBinLocationSupport()) {
@@ -1137,7 +1190,8 @@ class StockMovementService {
             if (!locationType) {
                 throw new IllegalArgumentException("Unable to find location type 'Receiving'")
             }
-            locationService.findOrCreateInternalLocation("Receiving ${stockMovement.identifier}",
+            String receivingLocationName = locationService.getReceivingLocationName(stockMovement?.identifier)
+            locationService.findOrCreateInternalLocation(receivingLocationName,
                     stockMovement.identifier, locationType, stockMovement.destination)
         }
     }
@@ -1149,7 +1203,7 @@ class StockMovementService {
 
         // If the shipment has been shipped we can roll it back
         Requisition requisition = stockMovement?.requisition
-        Shipment shipment = stockMovement?.requisition?.shipments[0]
+        Shipment shipment = stockMovement?.requisition?.shipment
         if (shipment && shipment.currentStatus > ShipmentStatusCode.PENDING) {
             shipmentService.rollbackLastEvent(shipment)
         }
@@ -1166,11 +1220,12 @@ class StockMovementService {
         if (stockMovement?.requisition) {
             documentList.addAll([
                     [
-                            name        : g.message(code: "export.items.label", default: "Export Items"),
+                            name        : g.message(code: "export.items.label", default: "Export items for shipment creation"),
                             documentType: DocumentGroupCode.EXPORT.name(),
                             contentType : "text/csv",
                             stepNumber  : 2,
-                            uri         : g.createLink(controller: 'stockMovement', action: "exportCsv", id: stockMovement?.requisition?.id, absolute: true)
+                            uri         : g.createLink(controller: 'stockMovement', action: "exportCsv", id: stockMovement?.requisition?.id, absolute: true),
+                            hidden      : false
                     ],
                     [
                         name        : g.message(code: "picklist.button.print.label"),
@@ -1184,7 +1239,8 @@ class StockMovementService {
                             documentType: DocumentGroupCode.PICKLIST.name(),
                             contentType : "application/pdf",
                             stepNumber  : 4,
-                            uri         : g.createLink(controller: 'picklist', action: "renderPdf", id: stockMovement?.requisition?.id, absolute: true)
+                            uri         : g.createLink(controller: 'picklist', action: "renderPdf", id: stockMovement?.requisition?.id, absolute: true),
+                            hidden      : true
                     ],
                     [
                             name        : g.message(code: "deliveryNote.label", default: "Delivery Note"),
@@ -1232,7 +1288,7 @@ class StockMovementService {
                             contentType : "application/vnd.ms-excel",
                             stepNumber  : 5,
                             uri         : g.createLink(controller: 'shipment', action: "exportPackingList", id: stockMovement?.shipment?.id, absolute: true),
-                            hidden      : true
+                            hidden      : false
                     ],
                     [
                             name        : g.message(code: "shipping.downloadPackingList.label"),
@@ -1240,7 +1296,15 @@ class StockMovementService {
                             contentType : "application/vnd.ms-excel",
                             stepNumber  : 5,
                             uri         : g.createLink(controller: 'doc4j', action: "downloadPackingList", id: stockMovement?.shipment?.id, absolute: true)
+                    ],
+                    [
+                            name        : g.message(code: "shipping.downloadRwandaCOD.label"),
+                            documentType: DocumentGroupCode.RWANDA_COD.name(),
+                            contentType : "application/vnd.ms-excel",
+                            stepNumber  : 5,
+                            uri         : g.createLink(controller: 'doc4j', action: "downloadRwandaCOD", id: stockMovement?.shipment?.id, absolute: true)
                     ]
+
             ])
         }
 

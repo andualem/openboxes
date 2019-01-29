@@ -5,6 +5,7 @@ import ReactTable from 'react-table';
 import PropTypes from 'prop-types';
 import update from 'immutability-helper';
 import fileDownload from 'js-file-download';
+import { Translate } from 'react-localize-redux';
 
 import 'react-table/react-table.css';
 
@@ -16,20 +17,6 @@ import { showSpinner, hideSpinner } from '../../actions';
 import Filter from '../../utils/Filter';
 
 const SelectTreeTable = (customTreeTableHOC(ReactTable));
-
-/* eslint-disable no-underscore-dangle */
-/* eslint-disable no-param-reassign */
-
-function getNodes(data, node = []) {
-  data.forEach((item) => {
-    if (Object.prototype.hasOwnProperty.call(item, '_subRows') && item._subRows) {
-      node = getNodes(item._subRows, node);
-    } else {
-      node.push(item._original);
-    }
-  });
-  return node;
-}
 
 /**
  * The second page of put-away where user can choose put-away bin, split a line
@@ -47,7 +34,6 @@ class PutAwaySecondPage extends Component {
       pivotBy,
       expanded,
       bins: [],
-      expandedRowsCount: 0,
     };
   }
 
@@ -73,12 +59,7 @@ class PutAwaySecondPage extends Component {
       }
     });
 
-    const allCurrentRows = this.selectTable
-      .getWrappedInstance().getResolvedState().sortedData;
-    const expandedRows = _.at(allCurrentRows, expandedRecordsIds);
-    const expandedRowsCount = getNodes(expandedRows).length;
-
-    this.setState({ expanded, expandedRowsCount });
+    this.setState({ expanded });
   };
 
   /**
@@ -87,43 +68,63 @@ class PutAwaySecondPage extends Component {
    */
   getColumns = () => [
     {
-      Header: 'Code',
+      Header: <Translate id="stockMovement.code.label" />,
       accessor: 'product.productCode',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Name',
+      Header: <Translate id="stockMovement.name.label" />,
       accessor: 'product.name',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Lot/Serial No.',
+      Header: <Translate id="stockMovement.lotSerialNo.label" />,
       accessor: 'inventoryItem.lotNumber',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Expiry',
+      Header: <Translate id="stockMovement.expiry.label" />,
       accessor: 'inventoryItem.expirationDate',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Recipient',
+      Header: <Translate id="stockMovement.recipient.label" />,
       accessor: 'recipient.name',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'QTY',
+      Header: <Translate id="putAway.qty.label" />,
       accessor: 'quantity',
       style: { whiteSpace: 'normal' },
-      Cell: props => <span>{props.value ? props.value.toLocaleString('en-US') : props.value}</span>,
+      Cell: (props) => {
+        const itemIndex = props.index;
+        const edit = _.get(this.state.putAway.putawayItems, `[${itemIndex}].edit`);
+
+        if (edit) {
+          return (<input
+            type="number"
+            className="form-control form-control-xs"
+            value={props.value}
+            onChange={(event) => {
+              const putAway = update(this.state.putAway, {
+                putawayItems: { [itemIndex]: { quantity: { $set: event.target.value } } },
+              });
+
+              this.setState({ putAway });
+            }}
+          />);
+        }
+
+        return (<span>{props.value ? props.value.toLocaleString('en-US') : props.value}</span>);
+      },
       Filter,
     }, {
-      Header: 'Current bin',
+      Header: <Translate id="putAway.currentBin.label" />,
       accessor: 'currentBins',
       style: { whiteSpace: 'normal' },
       Filter,
     }, {
-      Header: 'Stock Movement',
+      Header: <Translate id="stockMovement.label" />,
       accessor: 'stockMovement.name',
       style: { whiteSpace: 'normal' },
       Expander: ({ isExpanded }) => (
@@ -134,13 +135,13 @@ class PutAwaySecondPage extends Component {
       filterable: true,
       Filter,
     }, {
-      Header: 'Put Away Bin',
+      Header: <Translate id="putAway.putAwayBin.label" />,
       accessor: 'putawayLocation',
       Cell: (cellInfo) => {
         const splitItems = _.get(this.state.putAway.putawayItems, `[${cellInfo.index}].splitItems`);
 
         if (splitItems && splitItems.length > 0) {
-          return 'Split line';
+          return <Translate id="stockMovement.splitLine.label" />;
         }
 
         return (<Select
@@ -160,14 +161,26 @@ class PutAwaySecondPage extends Component {
       Header: '',
       accessor: 'splitItems',
       Cell: cellInfo => (
-        <SplitLineModal
-          putawayItem={this.state.putAway.putawayItems[cellInfo.index]}
-          splitItems={_.get(this.state.putAway.putawayItems, `[${cellInfo.index}].${cellInfo.column.id}`)}
-          saveSplitItems={(splitItems) => {
-            this.saveSplitItems(splitItems, cellInfo.index);
-          }}
-          bins={this.state.bins}
-        />),
+        <div className="d-flex flex-row">
+          <SplitLineModal
+            putawayItem={this.state.putAway.putawayItems[cellInfo.index]}
+            splitItems={_.get(this.state.putAway.putawayItems, `[${cellInfo.index}].${cellInfo.column.id}`)}
+            saveSplitItems={(splitItems) => {
+              this.saveSplitItems(splitItems, cellInfo.index);
+            }}
+            bins={this.state.bins}
+          />
+          <button
+            className="btn btn-outline-primary btn-xs mx-2"
+            onClick={() => this.editItem(cellInfo.index)}
+          ><Translate id="default.button.edit.label" />
+          </button>
+          <button
+            className="btn btn-outline-danger btn-xs"
+            onClick={() => this.deleteItem(cellInfo.index)}
+          ><Translate id="default.button.delete.label" />
+          </button>
+        </div>),
       filterable: false,
     },
   ];
@@ -179,9 +192,9 @@ class PutAwaySecondPage extends Component {
    */
   toggleTree = () => {
     if (this.state.pivotBy.length) {
-      this.setState({ pivotBy: [], expanded: {}, expandedRowsCount: 0 });
+      this.setState({ pivotBy: [], expanded: {} });
     } else {
-      this.setState({ pivotBy: ['stockMovement.name'], expanded: {}, expandedRowsCount: 0 });
+      this.setState({ pivotBy: ['stockMovement.name'], expanded: {} });
     }
   };
 
@@ -192,9 +205,19 @@ class PutAwaySecondPage extends Component {
    * @param {object} row
    * @public
    */
-  filterMethod = (filter, row) =>
-    (row[filter.id] !== undefined ?
-      String(row[filter.id].toLowerCase()).includes(filter.value.toLowerCase()) : true);
+  filterMethod = (filter, row) => {
+    // eslint-disable-next-line no-underscore-dangle
+    if (row._aggregated || row._groupedByPivot) {
+      return true;
+    }
+
+    let val = row[filter.id];
+    if (filter.id === 'putawayLocation') {
+      val = _.get(val, 'name');
+    }
+
+    return _.toString(val).toLowerCase().includes(filter.value.toLowerCase());
+  };
 
   /**
    * Fetches available bin locations from API.
@@ -254,6 +277,33 @@ class PutAwaySecondPage extends Component {
     this.savePutAways(putAway);
   }
 
+  editItem(itemIndex) {
+    const putAway = update(this.state.putAway, {
+      putawayItems: { [itemIndex]: { edit: { $set: true } } },
+    });
+
+    this.setState({ putAway });
+  }
+
+  deleteItem(itemIndex) {
+    this.props.showSpinner();
+    const url = `/openboxes/api/putawayItems/${_.get(this.state.putAway.putawayItems, `[${itemIndex}].id`)}`;
+
+    apiClient.delete(url)
+      .then(() => {
+        const putAway = update(this.state.putAway, {
+          putawayItems: {
+            $splice: [
+              [itemIndex, 1],
+            ],
+          },
+        });
+
+        this.setState({ putAway }, () => this.props.hideSpinner());
+      })
+      .catch(() => this.props.hideSpinner());
+  }
+
   /**
    * Save put-away and go to next page.
    * @public
@@ -300,32 +350,39 @@ class PutAwaySecondPage extends Component {
       };
 
     return (
-      <div className="container-fluid pt-2">
-        <h1>Put Away - {this.state.putAway.putawayNumber}</h1>
+      <div className="main-container">
+        <h1><Translate id="putAway.putAway.label" /> {this.state.putAway.putawayNumber}</h1>
         <div className="d-flex justify-content-between mb-2">
           <div>
-          Show by:
+            <Translate id="putAway.showBy.label" />:
             <button
               className="btn btn-primary ml-2 btn-xs"
               data-toggle="button"
               aria-pressed="false"
               onClick={toggleTree}
             >
-              {pivotBy && pivotBy.length ? 'Stock Movement' : 'Product'}
+              {pivotBy && pivotBy.length ? <Translate id="stockMovement.label" /> : <Translate id="product.label" /> }
+            </button>
+          </div>
+          <div>
+            <button
+              className="btn btn-outline-secondary btn-xs mr-3"
+              onClick={() => this.generatePutAwayList()}
+            >
+              <span><i className="fa fa-print pr-2" /><Translate id="putAway.generateList.label" /></span>
+            </button>
+            <button
+              type="button"
+              onClick={() => this.savePutAways(this.state.putAway)}
+              className="btn btn-outline-secondary btn-xs"
+            ><Translate id="default.button.save.label" />
             </button>
           </div>
           <button
-            className="btn btn-outline-secondary btn-xs"
-            style={{ marginRight: 170 }}
-            onClick={() => this.generatePutAwayList()}
-          >
-            <span><i className="fa fa-print pr-2" />Generate Put-Away list</span>
-          </button>
-          <button
             type="button"
             onClick={() => this.nextPage()}
-            className="float-right btn btn-outline-primary align-self-end btn-xs"
-          >Next
+            className="btn btn-outline-primary align-self-end btn-xs"
+          ><Translate id="default.button.next.label" />
           </button>
         </div>
         {
@@ -337,10 +394,7 @@ class PutAwaySecondPage extends Component {
               className="-striped -highlight"
               {...extraProps}
               defaultPageSize={Number.MAX_SAFE_INTEGER}
-              minRows={pivotBy && pivotBy.length ? this.state.expandedRowsCount : 0}
-              style={{
-                height: '500px',
-              }}
+              minRows={0}
               showPaginationBottom={false}
               filterable
               defaultFilterMethod={this.filterMethod}
@@ -352,7 +406,7 @@ class PutAwaySecondPage extends Component {
           type="button"
           onClick={() => this.nextPage()}
           className="btn btn-outline-primary float-right my-2 btn-xs"
-        >Next
+        ><Translate id="default.button.next.label" />
         </button>
       </div>
     );

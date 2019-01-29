@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
 import { connect } from 'react-redux';
+import { Translate } from 'react-localize-redux';
 
 import ModalWrapper from '../../form-elements/ModalWrapper';
 import ArrayField from '../../form-elements/ArrayField';
@@ -16,16 +17,17 @@ const FIELDS = {
   lines: {
     type: ArrayField,
     // eslint-disable-next-line react/prop-types
-    addButton: ({ addRow, shipmentItemId }) => (
+    addButton: ({ addRow, shipmentItemId, binLocation }) => (
       <button
         type="button"
         className="btn btn-outline-success btn-xs"
         onClick={() => addRow({
           shipmentItemId,
+          binLocation,
           receiptItemId: null,
           newLine: true,
         })}
-      >Add line
+      ><Translate id="default.button.addLine.label" />
       </button>
     ),
     getDynamicRowAttr: ({ rowValues }) => ({
@@ -41,7 +43,7 @@ const FIELDS = {
       },
       product: {
         type: SelectField,
-        label: 'Product',
+        label: 'product.label',
         fieldKey: 'disabled',
         attributes: {
           className: 'text-left',
@@ -60,11 +62,11 @@ const FIELDS = {
       },
       lotNumber: {
         type: TextField,
-        label: 'Lot',
+        label: 'stockMovement.lot.label',
       },
       expirationDate: {
         type: DateField,
-        label: 'Expiry',
+        label: 'stockMovement.expiry.label',
         attributes: {
           dateFormat: 'MM/DD/YYYY',
           autoComplete: 'off',
@@ -72,7 +74,7 @@ const FIELDS = {
       },
       quantityShipped: {
         type: TextField,
-        label: 'Qty Shipped',
+        label: 'stockMovement.quantityShipped.label',
         attributes: {
           type: 'number',
         },
@@ -87,10 +89,10 @@ function validate(values) {
 
   _.forEach(values.lines, (line, key) => {
     if (line && _.isNil(line.quantityShipped)) {
-      errors.lines[key] = { quantityShipped: 'Enter quantity shipped' };
+      errors.lines[key] = { quantityShipped: 'error.enterQuantityShipped.label' };
     }
     if (line.quantityShipped < 0) {
-      errors.lines[key] = { quantityShipped: 'Quantity shipped can\'t be negative' };
+      errors.lines[key] = { quantityShipped: 'error.quantityShippedNegative.label' };
     }
   });
 
@@ -201,6 +203,7 @@ class EditLineModal extends Component {
         formProps={{
           shipmentItemId: this.state.attr.fieldValue.shipmentItemId,
           productsFetch: this.productsFetch,
+          binLocation: this.state.attr.fieldValue.binLocation,
         }}
       />
     );

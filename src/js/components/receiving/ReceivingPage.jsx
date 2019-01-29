@@ -5,6 +5,10 @@ import PropTypes from 'prop-types';
 import { Form } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
 import moment from 'moment';
+import { confirmAlert } from 'react-confirm-alert';
+import { getTranslate } from 'react-localize-redux';
+
+import 'react-confirm-alert/src/react-confirm-alert.css';
 
 import PartialReceivingPage from './PartialReceivingPage';
 import ReceivingCheckScreen from './ReceivingCheckScreen';
@@ -16,22 +20,22 @@ function validate(values) {
   errors.containers = [];
 
   if (!values.dateDelivered) {
-    errors.dateDelivered = 'This field is required';
+    errors.dateDelivered = 'error.requiredField.label';
   } else {
     const dateDelivered = moment(values.dateDelivered, 'MM/DD/YYYY HH:mm Z');
     if (moment().diff(dateDelivered) < 0) {
-      errors.dateDelivered = 'The date cannot be in the future';
+      errors.dateDelivered = 'error.futureDate.label';
     }
     const dateShipped = values.dateShipped ? moment(values.dateShipped, 'MM/DD/YYYY HH:mm Z') : null;
     if (dateShipped && dateDelivered < dateShipped) {
-      errors.dateDelivered = 'The date cannot be before shipment date';
+      errors.dateDelivered = 'error.dateBeforeShipment.label';
     }
   }
   _.forEach(values.containers, (container, key) => {
     errors.containers[key] = { shipmentItems: [] };
     _.forEach(container.shipmentItems, (item, key2) => {
       if (item.quantityReceiving < 0) {
-        errors.containers[key].shipmentItems[key2] = { quantityReceiving: 'Quantity to receive can\'t be negative' };
+        errors.containers[key].shipmentItems[key2] = { quantityReceiving: 'error.quantityToReceiveNegative.label' };
       }
     });
   });
@@ -56,6 +60,7 @@ class ReceivingPage extends Component {
     this.nextPage = this.nextPage.bind(this);
     this.prevPage = this.prevPage.bind(this);
     this.save = this.save.bind(this);
+    this.confirmReceive = this.confirmReceive.bind(this);
   }
 
   componentDidMount() {
@@ -91,11 +96,21 @@ class ReceivingPage extends Component {
 
       this.save(payload, this.nextPage);
     } else {
-      this.save({ ...formValues, receiptStatus: 'COMPLETED' }, () => {
-        this.setState({ completed: true });
-        const { requisition } = formValues;
-        window.location = `/openboxes/stockMovement/show/${requisition}`;
-      });
+      const isBinLocationChosen = !_.some(formValues.containers, container =>
+        _.some(container.shipmentItems, shipmentItem => _.isNull(shipmentItem.binLocation.id)));
+
+      if (!isBinLocationChosen && this.props.hasBinLocationSupport && !(formValues.shipmentStatus === 'RECEIVED')) {
+        this.confirmReceive(formValues);
+      } else {
+        this.save({
+          ...formValues,
+          receiptStatus: 'COMPLETED',
+        }, () => {
+          this.setState({ completed: true });
+          const { requisition } = formValues;
+          window.location = `/openboxes/stockMovement/show/${requisition}`;
+        });
+      }
     }
   }
 
@@ -121,6 +136,34 @@ class ReceivingPage extends Component {
   }
 
   /**
+   * Shows transition confirmation dialog if there are items with the same code.
+   * @param {function} onConfirm
+   * @public
+   */
+  confirmReceive(formValues) {
+    confirmAlert({
+      title: this.props.translate('message.confirmReceive.label'),
+      message: this.props.translate('confirmReceive.message'),
+      buttons: [
+        {
+          label: this.props.translate('default.yes.label'),
+          onClick: () => this.save({
+            ...formValues,
+            receiptStatus: 'COMPLETED',
+          }, () => {
+            this.setState({ completed: true });
+            const { requisition } = formValues;
+            window.location = `/openboxes/stockMovement/show/${requisition}`;
+          }),
+        },
+        {
+          label: this.props.translate('default.no.label'),
+        },
+      ],
+    });
+  }
+
+  /**
   * Sends all changes made by user in this step of partial receiving to API and updates data.
   * @param {function} callback
   * @param {object} formValues
@@ -129,6 +172,7 @@ class ReceivingPage extends Component {
   save(formValues, callback) {
     this.props.showSpinner();
     const url = `/openboxes/api/partialReceiving/${this.props.match.params.shipmentId}?stepNumber=${this.state.page + 1}`;
+
 
     return apiClient.post(url, flattenRequest(formValues))
       .then((response) => {
@@ -235,7 +279,12 @@ class ReceivingPage extends Component {
   }
 }
 
-export default connect(null, { showSpinner, hideSpinner })(ReceivingPage);
+const mapStateToProps = state => ({
+  translate: getTranslate(state.localize),
+  hasBinLocationSupport: state.session.currentLocation.hasBinLocationSupport,
+});
+
+export default connect(mapStateToProps, { showSpinner, hideSpinner })(ReceivingPage);
 
 ReceivingPage.propTypes = {
   /** React router's object which contains information about url varaiables and params */
@@ -246,4 +295,6 @@ ReceivingPage.propTypes = {
   showSpinner: PropTypes.func.isRequired,
   /** Function called when data has loaded */
   hideSpinner: PropTypes.func.isRequired,
+  translate: PropTypes.func.isRequired,
+  hasBinLocationSupport: PropTypes.bool.isRequired,
 };

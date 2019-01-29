@@ -1,11 +1,12 @@
 /* eslint-disable no-shadow */
 import React from 'react';
-import { setActiveLanguage, getLanguages } from 'react-localize-redux';
+import { setActiveLanguage, getLanguages, withLocalize } from 'react-localize-redux';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
 import { connect } from 'react-redux';
+import { changeCurrentLocale } from '../actions';
 
-const LanguageSelector = ({ languages, setActiveLanguage }) => (
+const LanguageSelector = ({ languages, setActiveLanguage, changeCurrentLocale }) => (
   <div className="dropdown language-selector mx-1">
     <div className="nav-item dropdown">
       <a className="nav-link dropdown-toggle" href="#" id="navbarDropdown" aria-haspopup="true" aria-expanded="false">
@@ -17,7 +18,11 @@ const LanguageSelector = ({ languages, setActiveLanguage }) => (
             className="dropdown-item"
             key={language.code}
             href="#"
-            onClick={() => setActiveLanguage(language.code)}
+            onClick={() => {
+              changeCurrentLocale(language.code);
+              setActiveLanguage(language.code);
+            }
+            }
           >
             {language.name}
           </a>
@@ -28,12 +33,16 @@ const LanguageSelector = ({ languages, setActiveLanguage }) => (
   </div>
 );
 
-const mapStateToProps = state => ({ languages: getLanguages(state.locale) });
-const mapDispatchToProps = { setActiveLanguage, getLanguages };
+const mapStateToProps = state => ({
+  languages: getLanguages(state.localize),
+});
+const mapDispatchToProps = { setActiveLanguage, getLanguages, changeCurrentLocale };
 
-export default connect(mapStateToProps, mapDispatchToProps)(LanguageSelector);
+export default withLocalize(connect(mapStateToProps, mapDispatchToProps)(LanguageSelector));
 
 LanguageSelector.propTypes = {
   languages: PropTypes.arrayOf(PropTypes.shape({})).isRequired,
   setActiveLanguage: PropTypes.func.isRequired,
+  /** Function called to change the currently selected location */
+  changeCurrentLocale: PropTypes.func.isRequired,
 };

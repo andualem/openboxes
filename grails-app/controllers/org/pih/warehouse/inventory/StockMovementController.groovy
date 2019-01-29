@@ -21,6 +21,7 @@ import org.pih.warehouse.core.User
 import org.pih.warehouse.importer.ImportDataCommand
 import org.pih.warehouse.requisition.Requisition
 import org.pih.warehouse.shipping.Shipment
+import org.pih.warehouse.shipping.ShipmentStatusCode
 
 class StockMovementController {
 
@@ -47,6 +48,9 @@ class StockMovementController {
     }
 
     def list = {
+
+        def max = params.max?params.max as int:10
+        def offset = params.offset?params.offset as int:0
         User currentUser = User.get(session?.user?.id)
         Location currentLocation = Location.get(session?.warehouse?.id)
 
@@ -59,12 +63,26 @@ class StockMovementController {
             params.destination = params.destination?:currentLocation
         }
         else {
-            params.origin = params.origin?:currentLocation
-            params.destination = params.destination?:currentLocation
+            if (params.origin?.id == currentLocation?.id && params.destination?.id == currentLocation?.id) {
+                params.direction = null
+            }
+            else if (params.origin?.id == currentLocation?.id) {
+                params.direction = "OUTBOUND"
+            }
+            else if (params.destination?.id == currentLocation?.id) {
+                params.direction = "INBOUND"
+            }
+            else {
+                params.origin = params.origin ?: currentLocation
+                params.destination = params.destination ?: currentLocation
+            }
         }
 
+        // Discard the requisition so it does not get saved at the end of the request
         Requisition requisition = new Requisition(params)
         requisition.discard()
+
+        // Create stock movement to be used as search criteria
         StockMovement stockMovement = new StockMovement()
         if (params.q) {
             stockMovement.identifier = "%" + params.q + "%"
@@ -72,12 +90,14 @@ class StockMovementController {
             stockMovement.description = "%" + params.q + "%"
         }
         stockMovement.requestedBy = requisition.requestedBy
+        stockMovement.createdBy = requisition.createdBy
         stockMovement.origin = requisition.origin
         stockMovement.destination = requisition.destination
         stockMovement.statusCode = requisition?.status ? requisition?.status.toString() : null
+        stockMovement.receiptStatusCode = params?.receiptStatusCode ? params.receiptStatusCode as ShipmentStatusCode : null
 
-        def stockMovements = stockMovementService.getStockMovements(stockMovement, params.max?params.max as int:10, params.offset?params.offset as int:0)
-        def statistics = requisitionService.getRequisitionStatistics(requisition.origin, requisition.destination, currentUser)
+        def stockMovements = stockMovementService.getStockMovements(stockMovement, max, offset)
+        def statistics = requisitionService.getRequisitionStatistics(requisition.destination, requisition.origin, currentUser)
 
         render(view:"list", params:params, model:[stockMovements: stockMovements, statistics:statistics])
 
@@ -102,8 +122,9 @@ class StockMovementController {
             StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
             Requisition requisition = stockMovement?.requisition
             if (requisition) {
-                List shipments = stockMovement?.requisition?.shipments
+                def shipments = stockMovement?.requisition?.shipments
                 shipments.toArray().each { Shipment shipment ->
+                    requisition.removeFromShipments(shipment)
                     if (!shipment?.events?.empty) {
                         shipmentService.rollbackLastEvent(shipment)
                     }
@@ -114,7 +135,7 @@ class StockMovementController {
             }
             flash.message = "Successfully deleted stock movement with ID ${params.id}"
         } catch (Exception e) {
-            log.warn ("Unable to delete stock movement with ID ${params.id}: " + e.message)
+            log.error ("Unable to delete stock movement with ID ${params.id}: " + e.message, e)
             flash.message = "Unable to delete stock movement with ID ${params.id}: " + e.message
         }
 
@@ -135,10 +156,7 @@ class StockMovementController {
 
     def packingList = {
         StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
-        def shipments = Shipment.findAllByRequisition(stockMovement.requisition)
-        stockMovement.shipment = shipments[0]
-
-
+        stockMovement.shipment = stockMovement?.requisition?.shipment
         render(template: "packingList", model: [stockMovement:stockMovement])
     }
 
@@ -167,6 +185,22 @@ class StockMovementController {
         render ([data: "Document was uploaded successfully"] as JSON)
     }
 
+    def addDocument = {
+        log.info params
+        StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
+
+        Shipment shipmentInstance = stockMovement.shipment
+        def documentInstance = Document.get(params?.document?.id);
+        if (!documentInstance) {
+            documentInstance = new Document();
+        }
+        if (!shipmentInstance) {
+            flash.message = "${warehouse.message(code: 'default.not.found.message', args: [warehouse.message(code: 'shipment.label', default: 'Shipment'), params.id])}"
+            redirect(action: "list")
+        }
+        render(view: "addDocument", model: [shipmentInstance : shipmentInstance, documentInstance : documentInstance]);
+    }
+
 	def exportCsv = {
         StockMovement stockMovement = stockMovementService.getStockMovement(params.id)
 
@@ -178,13 +212,13 @@ class StockMovementController {
         def lineItems = stockMovement.lineItems.collect {
             [
                     requisitionItemId: it?.id?:"",
-                    productCode: it?.product?.productCode?:"",
+                    "productCode (required)": it?.product?.productCode?:"",
                     productName: it?.product?.name?:"",
                     palletName: it?.palletName?:"",
                     boxName: it?.boxName?:"",
                     lotNumber: it?.lotNumber?:"",
-                    expirationDate: it?.expirationDate?it?.expirationDate?.format("MM/dd/yyyy"):"",
-                    quantity: it?.quantityRequested?:"",
+                    "expirationDate (MM/dd/yyyy)": it?.expirationDate?it?.expirationDate?.format("MM/dd/yyyy"):"",
+                    "quantity (required)": it?.quantityRequested?:"",
                     recipientId: it?.recipient?.id?:""
             ]
         }

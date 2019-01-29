@@ -916,21 +916,14 @@ class ProductController {
      * Export all products as CSV
      */
 	def exportAsCsv = {
-        log.info "Export as CSV: " + params
 
-		//def products = session.productIds ? Product.getAll(session.productIds) : Product.list()
-
-        def products = Product.list()
+        def products = Product.findAllByActive(true)
 
         if (products) {
-			def date = new Date();
 			response.setHeader("Content-disposition",
-					"attachment; filename=\"Products-${date.format("yyyyMMdd-hhmmss")}.csv\"")
+					"attachment; filename=\"Products-${new Date().format("yyyyMMdd-hhmmss")}.csv\"")
 			response.contentType = "text/csv"
-			def csv = productService.exportProducts(products)
-			//println "export products: " + csv
-
-            render csv
+			render productService.exportProducts(products)
 		}
 		else {
 			render(text: 'No products found', status: 404)
@@ -999,10 +992,9 @@ class ProductController {
 					//render localFile.getText()
 					//response.outputStream << localFile.newInputStream()
 				} catch (RuntimeException e) {
-                    log.error("Runtime exception occurred while uploading product import CSV " + e.message, e)
+                    log.error("An error occurred while uploading product import CSV " + e.message, e)
 					//flash.message = e.message
-                    command.errors.reject("Runtime exception: " + e.message)
-
+                    command.errors.reject(e.message)
 				}
                 catch (FileNotFoundException e) {
                     log.error("File not found exception occurred while uploading product import CSV " + e.message, e)

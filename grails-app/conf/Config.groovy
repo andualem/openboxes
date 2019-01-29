@@ -6,7 +6,7 @@
 * By using this software in any fashion, you are agreeing to be bound by
 * the terms of this license.
 * You must not remove this notice, or any other, from this software.
-**/ 
+**/
 import it.openutils.log4j.AlternateSMTPAppender;
 import grails.util.GrailsUtil
 import org.apache.log4j.AsyncAppender
@@ -18,7 +18,7 @@ import org.pih.warehouse.log4j.net.DynamicSubjectSMTPAppender
 
 // Locations to search for config files that get merged into the main config
 // config files can either be Java properties files or ConfigSlurper scripts
-grails.config.locations = [ 
+grails.config.locations = [
 	"classpath:${appName}-config.properties",
 	"classpath:${appName}-config.groovy",
 	"file:${userHome}/.grails/${appName}-config.properties",
@@ -56,12 +56,12 @@ grails.exceptionresolver.params.exclude = ['password', 'passwordConfirm']
 
 // Default mail settings
 grails {
-	mail { 		
-		// By default we enable email.  You can enable/disable email using environment settings below or in your 
-		// ${user.home}/openboxes-config.properties file 
-		enabled = true			
+	mail {
+		// By default we enable email.  You can enable/disable email using environment settings below or in your
+		// ${user.home}/openboxes-config.properties file
+		enabled = false
 		from = "info@openboxes.com"
-		prefix = "[OpenBoxes " + GrailsUtil.environment+"]"
+		prefix = "[OpenBoxes]"
 		host = "localhost"
 		port = "25"
 
@@ -108,7 +108,7 @@ grails.views.gsp.sitemesh.preprocess = true
 grails.views.javascript.library="jquery"
 // scaffolding templates configuration
 grails.scaffolding.templates.domainSuffix = 'Instance'
-// Set to true if BootStrap.groovy is failing to add all sample data 
+// Set to true if BootStrap.groovy is failing to add all sample data
 grails.gorm.failOnError = false
 // Set to false to use the new Grails 1.2 JSONBuilder in the render method
 grails.json.legacy.builder = false
@@ -123,12 +123,19 @@ grails.spring.bean.packages = []
 grails.exceptionresolver.params.exclude = ['password']
 
 grails.validateable.packages = [
-	'org.pih.warehouse.inventory', 
+	'org.pih.warehouse.inventory',
 	'org.pih.warehouse.fulfillment',
-	'org.pih.warehouse.order', 
+	'org.pih.warehouse.order',
 	'org.pih.warehouse.request',
 	'org.pih.warehouse.shipment',
 ]
+
+// Default URL
+grails.serverURL = "http://localhost:8080/${appName}";
+
+// UI performance
+uiperformance.enabled = false
+
 
 /* Default settings for emails sent through the SMTP appender  */
 //mail.error.server = 'localhost'
@@ -150,48 +157,13 @@ mail.error.prefix = grails.mail.prefix
 // set per-environment serverURL stem for creating absolute links
 environments {
 	development {
-		grails.serverURL = "http://localhost:8080/${appName}";
-		uiperformance.enabled = false
-		grails.mail.enabled = false
-		mail.error.debug = false
 	}
-	test {  
-		grails.serverURL = "http://localhost:8080/${appName}"  
-		uiperformance.enabled = false
-		grails.mail.enabled = false
+	test {
 	}
-	loadtest {  
-		grails.serverURL = "http://localhost:8080/${appName}"  
-		uiperformance.enabled = false
-		grails.mail.enabled = false
+	loadtest {
 	}
-	production {  
-		grails.serverURL = "http://localhost:8080/${appName}"
-		uiperformance.enabled = false
-		grails.mail.enabled = true
-        grails.mail.prefix = "[OpenBoxes]"
+	production {
     }
-	staging {  
-		grails.serverURL = "http://localhost:8080/${appName}"
-		uiperformance.enabled = false
-		grails.mail.enabled = true
-	}
-	qa {  
-		grails.serverURL = "http://localhost:8080/${appName}"  
-		uiperformance.enabled = false
-		grails.mail.enabled = true
-	}
-	client {
-		grails.serverURL = "http://localhost:8080/${appName}";
-		uiperformance.enabled = false
-		grails.mail.enabled = true
-	}
-	root {
-		grails.serverURL = "http://localhost:8080/${appName}";
-		uiperformance.enabled = false
-		grails.mail.enabled = true
-	}
-
 }
 
 
@@ -375,12 +347,12 @@ jqueryValidationUi {
 	validClass = 'valid'
 	onsubmit = true
 	renderErrorsOnTop = true
-	
+
 	qTip {
 		packed = true
-		classes = 'ui-tooltip-red ui-tooltip-shadow ui-tooltip-rounded'  
+		classes = 'ui-tooltip-red ui-tooltip-shadow ui-tooltip-rounded'
 	}
-	
+
 	/*
 	  Grails constraints to JQuery Validation rules mapping for client side validation.
 	  Constraint not found in the ConstraintsMap will trigger remote AJAX validation.
@@ -400,7 +372,7 @@ jqueryValidationUi {
 		unique:'unique',
 		validator:'validator'
 	]
-	
+
 	// Long, Integer, Short, Float, Double, BigInteger, BigDecimal
 	NumberConstraintsMap = [
 		min:'min',
@@ -412,7 +384,7 @@ jqueryValidationUi {
 		unique:'unique',
 		validator:'validator'
 	]
-	
+
 	CollectionConstraintsMap = [
 		minSize:'minlength',
 		maxSize:'maxlength',
@@ -420,7 +392,7 @@ jqueryValidationUi {
 		nullable:'required',
 		validator:'validator'
 	]
-	
+
 	DateConstraintsMap = [
 		min:'minDate',
 		max:'maxDate',
@@ -431,16 +403,16 @@ jqueryValidationUi {
 		unique:'unique',
 		validator:'validator'
 	]
-	
+
 	ObjectConstraintsMap = [
 		nullable:'required',
 		validator:'validator'
 	]
-	
+
 	CustomConstraintsMap = [
 		phone:'true', // International phone number validation
 		phoneUS:'true'
-	]	
+	]
 }
 
 
@@ -449,6 +421,9 @@ openboxes.logo.label = ""
 openboxes.logo.url = "/openboxes/images/logo/logo.png"
 openboxes.logoSquare.url = "/openboxes/images/logo/logo-512x512.png"
 openboxes.logoSmall.url = "/openboxes/images/logo/logo-small.png"
+
+// Allow system to anonymize user data to prevent it from being accessed by unauthorized users
+openboxes.anonymize.enabled = false
 
 // Grails Sentry/Raven plugin
 // NOTE: You'll need to enable the plugin and set a DSN using an external config properties file
@@ -459,7 +434,7 @@ grails.plugins.raven.dsn = "https://{PUBLIC_KEY}:{SECRET_KEY}@app.getsentry.com/
 // Dashboard configuration to allow specific ordering of widgets (overrides enabled/disabled config)
 openboxes.dashboard.column1.widgets=["requisitionItemSummary","requisitionSummary","receiptSummary","shipmentSummary","indicatorSummary"]
 openboxes.dashboard.column2.widgets=["binLocationSummary", "expiringSummary","productSummary","genericProductSummary",]
-openboxes.dashboard.column3.widgets=["newsSummary","activitySummary","valueSummary","tagSummary"]
+openboxes.dashboard.column3.widgets=["newsSummary","activitySummary","valueSummary","tagSummary","catalogsSummary"]
 
 // Column 1
 openboxes.dashboard.requisitionItemSummary.enabled=true
@@ -479,6 +454,7 @@ openboxes.dashboard.newsSummary.enabled=false
 openboxes.dashboard.activitySummary.enabled=true
 openboxes.dashboard.valueSummary.enabled=false
 openboxes.dashboard.tagSummary.enabled=true
+openboxes.dashboard.catalogsSummary.enabled=true
 
 // Default value for news summary
 openboxes.dashboard.newsSummary.newsItems = []
@@ -521,6 +497,7 @@ springcache {
         selectTagCache { }
         selectTagsCache { }
         selectCategoryCache { }
+		selectCatalogsCache { }
 	}
 }
 
@@ -650,6 +627,7 @@ openboxes.shipping.search.maxResults = 1000
 
 // Automatically create temporary receiving locations for shipments
 openboxes.receiving.createReceivingLocation.enabled = true
+openboxes.receiving.receivingLocation.prefix = Constants.DEFAULT_RECEIVING_LOCATION_PREFIX
 
 // Grails doc configuration
 grails.doc.title = "OpenBoxes"

@@ -23,7 +23,6 @@ class StockMovementItem {
     RequisitionItem requisitionItem
 
     BigDecimal quantityRequested
-    BigDecimal quantityAllowed
     BigDecimal quantityAvailable
     BigDecimal quantityRevised
     BigDecimal quantityCanceled
@@ -58,6 +57,11 @@ class StockMovementItem {
 
     BigDecimal getQuantityRequired() {
         return quantityRevised?:quantityRequested
+    }
+
+    BigDecimal getQuantityAllowed() {
+        def stocklistItem = requisitionItem?.requisition?.requisitionTemplate?.requisitionItems?.find{ it?.product?.productCode == requisitionItem?.product?.productCode }
+        return stocklistItem?.quantity?:null
     }
 
 
@@ -176,7 +180,6 @@ class StockMovementItem {
                 product: requisitionItem?.product,
                 inventoryItem: requisitionItem?.inventoryItem,
                 quantityRequested: requisitionItem.quantity,
-                quantityAllowed: null,
                 quantityAvailable: null,
                 quantityCanceled: requisitionItem?.quantityCanceled,
                 quantityRevised: requisitionItem.calculateQuantityRevised(),
@@ -211,7 +214,8 @@ class StockMovementItem {
         }
 
         if (lotNumber?.contains("E") && NumberUtils.isNumber(lotNumber)) {
-            throw new IllegalArgumentException("Lot numbers must not be specified in scientific notation")
+            throw new IllegalArgumentException("Lot numbers must not be specified in scientific notation. " +
+                    "Please reformat field with Lot Number: \"${lotNumber}\" to a number format")
         }
 
         Person recipient = recipientId ? Person.get(recipientId) : null
@@ -328,7 +332,8 @@ class SubstitutionItem {
                 minExpirationDate: minExpirationDate?.format("MM/dd/yyyy"),
                 quantityAvailable: quantityAvailable,
                 quantitySelected : quantitySelected,
-                quantityRequested : quantitySelected
+                quantityRequested : quantitySelected,
+                availableItems: availableItems
         ]
     }
 }

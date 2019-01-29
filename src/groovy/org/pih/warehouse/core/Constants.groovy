@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat;
 class Constants {
 
 
-	static final controllersWithAuthUserNotRequired = ['api','rxNorm','test']
+	static final controllersWithAuthUserNotRequired = ['api','test']
 	static final actionsWithAuthUserNotRequired = ['test', 'login', 'logout', 'handleLogin', 'signup', 'handleSignup', 'json', 'updateAuthUserLocale']
 	static final actionsWithLocationNotRequired = ['test', 'login', 'logout', 'handleLogin', 'signup', 'handleSignup', 'chooseLocation', 'json', 'updateAuthUserLocale']
 	static final changeActions = ['edit', 'delete', 'create', 'add', 'process','save', 'update','importData', 'receive','showRecordInventory','withdraw', 'cancel', 'change','toggle']
@@ -83,6 +83,10 @@ class Constants {
 	// Default character separator for generated names
 	static final String DEFAULT_NAME_SEPARATOR = "-"
 
+	// Default character used to separate columns and newlines in exports
+	static final String DEFAULT_COLUMN_SEPARATOR = ","
+	static final String DEFAULT_LINE_SEPARATOR = "\n"
+
 	// Characters that should be included with each of the random number types
 	static final String RANDOM_IDENTIFIER_ALPHABETIC_CHARACTERS = "ABCDEFGHJKMNPQRSTUVXYZ"
 	static final String RANDOM_IDENTIFIER_ALPHANUMERIC_CHARACTERS = "0123456789ABCDEFGHJKMNPQRSTUVWXYZ"
@@ -97,6 +101,8 @@ class Constants {
 	static final String DEFAULT_TRANSACTION_NUMBER_FORMAT = "AAA-AAA-AAA"
 
 	static final String TRACKING_NUMBER_TYPE_ID = "10"
+
+	static final String DEFAULT_RECEIVING_LOCATION_PREFIX = "R"
 
 
 }

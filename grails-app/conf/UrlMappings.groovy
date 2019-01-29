@@ -52,6 +52,18 @@ class UrlMappings {
             action = [GET:"read", POST: "update"]
         }
 
+        // Stock Movement API
+
+        "/api/stockMovements/importPickListItems/$id"(parseRequest: true) {
+            controller = "stockMovementApi"
+            action = [POST: "importPickListItems"]
+        }
+
+        "/api/stockMovements/exportPickListItems/$id"(parseRequest: true) {
+            controller = "stockMovementApi"
+            action = [GET:"exportPickListItems"]
+        }
+
         // Partial Receiving API
 
         "/api/partialReceiving"(parseRequest: true) {
@@ -76,6 +88,13 @@ class UrlMappings {
         "/api/stocklistItems/availableStocklists"(parseRequest: true) {
             controller = "stocklistItemApi"
             action = [GET:"availableStocklists"]
+        }
+
+        // Stocklist API
+
+        "/api/stocklists/sendMail/$id"(parseRequest: true) {
+            controller = "stocklistApi"
+            action = [POST: "sendMail"]
         }
 
         // Standard REST APIs

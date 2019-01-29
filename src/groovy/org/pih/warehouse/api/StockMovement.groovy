@@ -39,15 +39,18 @@ class StockMovement {
     Location origin
     Location destination
     Person requestedBy
+    Person createdBy
     Date dateRequested
 
     // Shipment information
     Date dateShipped
     ShipmentType shipmentType
+    ShipmentStatusCode receiptStatusCode
     String trackingNumber
     String driverName
     String comments
     String currentStatus
+    Float totalValue
 
     StockMovementType stockMovementType
 
@@ -75,12 +78,14 @@ class StockMovement {
         requestedBy(nullable:false)
         dateRequested(nullable:false)
         stockMovementType(nullable:true)
+        receiptStatusCode(nullable:true)
         shipment(nullable:true)
         dateShipped(nullable:true)
         shipmentType(nullable:true)
         trackingNumber(nullable:true)
         driverName(nullable:true)
         comments(nullable:true)
+        totalValue(nullable:true)
     }
 
 
@@ -132,6 +137,16 @@ class StockMovement {
     ShipmentStatusCode getShipmentStatusCode() {
         return shipment?.status?.code?:ShipmentStatusCode.PENDING
 
+    }
+
+    /**
+     * Return total value of the issued shipment
+     *
+     * @return
+     */
+    Float getTotalValue() {
+        def itemsWithPrice = shipment?.shipmentItems?.findAll { it.product.pricePerUnit }
+        return itemsWithPrice.collect { it?.quantity * it?.product?.pricePerUnit }.sum()?:0
     }
 
     /**
@@ -205,7 +220,8 @@ enum DocumentGroupCode {
     PACKING_LIST('Packing List'),
     CERTIFICATE_OF_DONATION('Certificate of Donation'),
     DELIVERY_NOTE('Delivery Note'),
-    GOODS_RECEIPT_NOTE('Goods Receipt Note')
+    GOODS_RECEIPT_NOTE('Goods Receipt Note'),
+    RWANDA_COD('Rwanda COD')
 
     final String description
 
@@ -214,7 +230,7 @@ enum DocumentGroupCode {
     }
 
     static list() {
-        return [EXPORT, INVOICE, PICKLIST, PACKING_LIST, CERTIFICATE_OF_DONATION, DELIVERY_NOTE, GOODS_RECEIPT_NOTE]
+        return [EXPORT, INVOICE, PICKLIST, PACKING_LIST, CERTIFICATE_OF_DONATION, DELIVERY_NOTE, GOODS_RECEIPT_NOTE, RWANDA_COD]
     }
 
 }

@@ -13,6 +13,7 @@ import grails.converters.JSON
 import grails.validation.ValidationException
 import org.pih.warehouse.core.Location
 import org.pih.warehouse.core.Person
+import org.pih.warehouse.core.User
 import org.pih.warehouse.product.Product
 import org.pih.warehouse.product.ProductException
 import org.pih.warehouse.shipping.Container
@@ -26,6 +27,7 @@ class InventoryItemController {
 	def shipmentService;
 	def requisitionService;
 	def orderService;
+	def forecastingService
 
 	
 	def index = { 
@@ -60,22 +62,16 @@ class InventoryItemController {
 	def showStockCard = { StockCardCommand cmd ->
 
         try {
-            long startTime = System.currentTimeMillis()
+			// add the current warehouse to the command object which prevents location from being spoofed
+			cmd.warehouse = Location.get(session?.warehouse?.id)
 
-            // add the current warehouse to the command object which prevents location from being spoofed
-            cmd.warehouse = Location.get(session?.warehouse?.id)
-
-            // now populate the rest of the commmand object
-            inventoryService.getStockCardCommand(cmd, params)
-            startTime = System.currentTimeMillis()
-
-            //def quantityMap = inventoryService.getQuantityOnHand(commandInstance.warehouseInstance, commandInstance?.productInstance)
-
-            //log.info "get quantity on hand: " + (System.currentTimeMillis() - startTime) + " ms"
-            //startTime = System.currentTimeMillis()
+			// now populate the rest of the commmand object
+			inventoryService.getStockCardCommand(cmd, params)
 
 
-            [ commandInstance: cmd ]
+			def demand = forecastingService.getDemand(cmd.warehouse, cmd.product)
+
+            [ commandInstance: cmd, demand: demand ]
         } catch (ProductException e) {
             flash.message = e.message
             redirect(controller: "dashboard", action: "index")
@@ -95,11 +91,11 @@ class InventoryItemController {
 
     def showCurrentStockAllLocations = { StockCardCommand cmd ->
         def startTime = System.currentTimeMillis()
-        //log.info "showStockCard " + (System.currentTimeMillis() - currentTime) + " ms"
-        // add the current warehouse to the command object
-        cmd.warehouse = Location.get(session?.warehouse?.id)
+		User currentUser = User.get(session.user.id)
+		Location currentLocation = Location.get(session?.warehouse?.id)
+        cmd.warehouse = currentLocation
         def commandInstance = inventoryService.getStockCardCommand(cmd, params)
-        def quantityMap = inventoryService.getQuantityOnHand(commandInstance?.product)
+        def quantityMap = inventoryService.getCurrentStockAllLocations(commandInstance?.product, currentLocation, currentUser)
         log.info "${controllerName}.${actionName}: " + (System.currentTimeMillis() - startTime) + " ms"
 
         render(template: "showCurrentStockAllLocations", model: [commandInstance:commandInstance, quantityMap:quantityMap])
@@ -278,24 +274,19 @@ class InventoryItemController {
 
     def showConsumption = { StockCardCommand cmd ->
 
-        log.info "Show consumption " + params
-        long currentTime = System.currentTimeMillis()
-
         // add the current warehouse to the command object
         cmd.warehouse = Location.get(session?.warehouse?.id)
 
-        def reasonCodes = params.list("reasonCode");//.collect { reasonCode ->
-            //ReasonCode.findReasonCodeByName(reasonCode)
-            //reasonCode as ReasonCode
-        //}
-
+        def reasonCodes = params.list("reasonCode")
 
         // now populate the rest of the commmand object
         def commandInstance = inventoryService.getStockCardCommand(cmd, params)
         def issuedRequisitionItems = requisitionService.getIssuedRequisitionItems(commandInstance?.warehouse, commandInstance?.product, cmd.startDate, cmd.endDate, reasonCodes)
 
+		def demandSummary = forecastingService.getDemandSummary(cmd.warehouse, cmd.product)
+
         render(template: "showConsumption",
-                model: [commandInstance:commandInstance, issuedRequisitionItems:issuedRequisitionItems])
+                model: [commandInstance:commandInstance, issuedRequisitionItems:issuedRequisitionItems, demandSummary:demandSummary])
     }
 
 

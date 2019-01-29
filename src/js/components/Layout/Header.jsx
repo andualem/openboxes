@@ -1,8 +1,8 @@
 import React from 'react';
 import translations from '../../en';
-import LanguageSelector from '../LanguageSelector';
 import GlobalSearch from '../GlobalSearch';
 import LocationChooser from '../location/LocationChooser';
+import LanguageSelector from '../LanguageSelector';
 
 const { dashboard } = translations.navbar;
 

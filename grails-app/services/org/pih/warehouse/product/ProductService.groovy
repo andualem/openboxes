@@ -6,7 +6,7 @@
  * By using this software in any fashion, you are agreeing to be bound by
  * the terms of this license.
  * You must not remove this notice, or any other, from this software.
- **/ 
+ **/
 package org.pih.warehouse.product
 
 import grails.validation.ValidationException
@@ -28,9 +28,9 @@ class ProductService {
 	def sessionFactory
 	def grailsApplication
 	def identifierService
-
+	def userService
 	/**
-	 * 	
+	 *
 	 * @param query
 	 * @return
 	 */
@@ -39,7 +39,7 @@ class ProductService {
 	}
 
 	/**
-	 * 
+	 *
 	 */
 	def findNdcProducts(search) {
 		return getNdcResults("search", search.searchTerms?:"")
@@ -102,7 +102,7 @@ class ProductService {
 	 * 		<displayTermsList>
 	 * 			<term></term>
 	 * 		</displayTermsList>
-	 * 	</rxnormdata>	
+	 * 	</rxnormdata>
 	 * @return
 	 */
 
@@ -400,7 +400,7 @@ class ProductService {
      */
 	Category getRootCategory() {
 		def rootCategory = Category.getRootCategory()
-		if (!rootCategory) { 
+		if (!rootCategory) {
 			def categories = Category.findAllByParentCategoryIsNull();
 			if (categories && categories.size() == 1) {
 				rootCategory = categories.get(0);
@@ -437,7 +437,7 @@ class ProductService {
      *
      * @param command
      */
-	public void validateData(ImportDataCommand command) {
+	void validateData(ImportDataCommand command) {
 		log.info "validate data test "
 		// Iterate over each row and validate values
 		command?.data?.each { Map params ->
@@ -465,7 +465,7 @@ class ProductService {
      * Import the data in the given import command object
      * @param command
      */
-	public void importData(ImportDataCommand command) {
+	void importData(ImportDataCommand command) {
 		log.info "import data"
 
 		try {
@@ -507,7 +507,7 @@ class ProductService {
      * @param term
      * @return
      */
-    public def searchProductAndProductGroup(String term) {
+    def searchProductAndProductGroup(String term) {
         return searchProductAndProductGroup(term, false)
     }
 
@@ -517,7 +517,7 @@ class ProductService {
 	 * @param term
 	 * @return
 	 */
-	public def searchProductAndProductGroup(String term, Boolean wildcards){
+	def searchProductAndProductGroup(String term, Boolean wildcards){
 		long startTime = System.currentTimeMillis()
 		def text = (wildcards) ? "%${term.toLowerCase()}%" : "${term.toLowerCase()}%"
 		def products = Product.executeQuery(
@@ -527,7 +527,7 @@ class ProductService {
 				or lower(p.productCode) like ?""", [text, text])
 		// products.each{ println it}
 		println " * Search product and product group: " + (System.currentTimeMillis() - startTime) + " ms"
-		
+
 		return products
 	}
 
@@ -537,7 +537,7 @@ class ProductService {
 	 * @param data
 	 * @return
 	 */
-	public String getDelimiter(String data) {
+	String getDelimiter(String data) {
 		// Check to make sure the format is comma-separated
 		def lines = data.split("\n")
 		def delimiters = [",", "\t", ";"]
@@ -547,23 +547,23 @@ class ProductService {
 			if (headerColumns.size() == Constants.EXPORT_PRODUCT_COLUMNS.size()) {
 				return delimiter
 			}
-		}			
+		}
 		throw new RuntimeException("""Invalid file format: File must contain the following columns: ${Constants.EXPORT_PRODUCT_COLUMNS};
             Columns must be separated by a comma (,) or tab (\\t);
             lines must be separated by a linefeed (\\n); If you're using Mac Excel, save the file as Windows Comma Separated (.csv) and upload again.""")
 	}
-	
+
 	/**
      * Get a list of columns for the data set using the default column delimiter.
      *
 	 * @param csv
 	 * @return
 	 */
-	public List<String> getColumns(String csv) {
+	List<String> getColumns(String csv) {
 		def delimiter = getDelimiter(csv)
 		return getColumns(csv, delimiter)
 	}
-	
+
 	/**
      * Get a list of columns for the data set using the given column delimiter.
      *
@@ -571,7 +571,7 @@ class ProductService {
 	 * @param delimiter
 	 * @return
 	 */
-	public List<String> getColumns(String csv, String delimiter) {
+	List<String> getColumns(String csv, String delimiter) {
 		// Check to make sure the format is comma-separated
 		def lines = csv.split("\n")
 		def columns = lines[0].split(delimiter)
@@ -587,11 +587,11 @@ class ProductService {
 	 * @param csv
 	 * @return
 	 */
-	public List<Product> getExistingProducts(String csv) { 
+	List<Product> getExistingProducts(String csv) {
 		def delimiter = getDelimiter(csv)
 		return getExistingProducts(csv, delimiter)
 	}
-	
+
 	/**
 	 * Gets a list of products that already exist in the database.
      *
@@ -599,9 +599,9 @@ class ProductService {
 	 * @param delimiter
 	 * @return
 	 */
-	public List<Product> getExistingProducts(String csv, String delimiter) {
+	List<Product> getExistingProducts(String csv, String delimiter) {
 		def products = new ArrayList<Product>()
-		
+
 		// Iterate over each line and either update an existing product or create a new product
 		csv.toCsvReader(['skipLines':1, 'separatorChar':delimiter]).eachLine { tokens ->
 			def product = Product.findByIdOrProductCode(tokens[0], tokens[1])
@@ -621,25 +621,24 @@ class ProductService {
 
 	/**
 	 * Import products from csv
-	 * 
+	 *
 	 * ID,Name,Category,Description,Product Code,Unit of Measure,Manufacturer,Manufacturer Code,Cold Chain,UPC,NDC,Date Created,Date Updated
-	 * 
+	 *
 	 * @param csv
 	 */
-	public List validateProducts(String csv) {
+	List validateProducts(String csv) {
 		return validateProducts(csv, getDelimiter(csv))
 	}
-	
+
 	/**
-	 * 
+	 *
 	 * @param csv
 	 * @param delimiter
 	 * @param saveToDatabase
 	 * @return
 	 */
-	public List validateProducts(String csv, String delimiter) {
-		println "CSV: " + csv
-		
+	List validateProducts(String csv, String delimiter) {
+
 		def products = []
 		if (!csv) {
 			throw new RuntimeException("CSV cannot be empty")
@@ -651,12 +650,12 @@ class ProductService {
 		if (columns.size() != Constants.EXPORT_PRODUCT_COLUMNS.size()) {
 			throw new RuntimeException("Invalid data format")
 		}
-		
-		def rowCount = 1;
+
+		int rowCount = 1;
 
 		// Iterate over each line and either update an existing product or create a new product
 		csv.toCsvReader(['skipLines':1, 'separatorChar':delimiter]).eachLine { tokens ->
-			
+
 			rowCount++
 			println "Processing line: " + tokens
 			def productId = tokens[0]
@@ -666,9 +665,9 @@ class ProductService {
 			def description = tokens[4]
 			def unitOfMeasure = tokens[5]
             def productTags = tokens[6]?.split(",")
-            def unitPrice
+            def pricePerUnit
             try {
-                unitPrice = tokens[7]?Float.valueOf(tokens[7]):null
+				pricePerUnit = tokens[7]?Float.valueOf(tokens[7]):null
             } catch (NumberFormatException e) {
                 throw new RuntimeException("Unit price for product '${productCode}' at row ${rowCount} must be a valid decimal (value = '${tokens[7]}')", e)
             }
@@ -682,8 +681,6 @@ class ProductService {
 			def coldChain = Boolean.valueOf(tokens[15])
 			def upc = tokens[16]
 			def ndc = tokens[17]
-			//def dateCreated = tokens[11]?Date.parse("dd/MMM/yyyy hh:mm:ss", tokens[11]):null
-			//def dateUpdated = tokens[12]?Date.parse("dd/MMM/yyyy hh:mm:ss", tokens[12]):null
 
 			if (!productName) {
 				throw new RuntimeException("Product name cannot be empty at row " + rowCount)
@@ -692,13 +689,37 @@ class ProductService {
 			def category = findOrCreateCategory(categoryName)
 			def product = Product.findByIdOrProductCode(productId, productCode)
 
-            // If the identifier is incorrect/missing we should display the ID of the product found using the product code instead of the missing/incorrect product identifier
-            products << [id: product?.id?:productId, name: productName, category: category, description: description,
-                    productCode: productCode, upc: upc, ndc: ndc, coldChain: coldChain, pricePerUnit: unitPrice,tags:productTags,
-                    unitOfMeasure: unitOfMeasure, manufacturer: manufacturer, manufacturerCode: manufacturerCode, brandName: brandName,
-                    manufacturerName: manufacturerName, vendor: vendor, vendorCode: vendorCode, vendorName: vendorName, product: product]
+			// If the identifier is incorrect/missing we should display the ID of the product found using the product code instead of the missing/incorrect product identifier
+			def productProperties = [
+					id              : product?.id ?: productId,
+					name            : productName,
+					category        : category,
+					description     : description,
+					productCode     : productCode,
+					upc             : upc,
+					ndc             : ndc,
+					coldChain       : coldChain,
+					tags            : productTags,
+					unitOfMeasure   : unitOfMeasure,
+					manufacturer    : manufacturer,
+					manufacturerCode: manufacturerCode,
+					brandName       : brandName,
+					manufacturerName: manufacturerName,
+					vendor          : vendor,
+					vendorCode      : vendorCode,
+					vendorName      : vendorName,
+					product         : product
+			]
 
-			
+			// If the user-entered unit price is different from the current unit price validate the user is allowed to make the change
+			if (pricePerUnit) {
+				if (pricePerUnit != product?.pricePerUnit) {
+					userService.assertCurrentUserHasRoleFinance()
+					productProperties.pricePerUnit = pricePerUnit
+				}
+			}
+
+			products << productProperties
 		}
 
 		return products;
@@ -759,7 +780,7 @@ class ProductService {
 		return exportProducts(products)
 	}
 
-	
+
 	/**
 	 * Export given products.
      *
@@ -772,7 +793,7 @@ class ProductService {
         def formatDate = new SimpleDateFormat("dd/MMM/yyyy hh:mm:ss")
 		def attributes = Attribute.findAllByExportableAndActive(true, true)
         def formatTagLib = grailsApplication.mainContext.getBean('org.pih.warehouse.FormatTagLib')
-
+		boolean hasRoleFinance = userService.hasRoleFinance()
 		products.each { product ->
 			def row =  [
 				Id: product?.id,
@@ -782,7 +803,7 @@ class ProductService {
 				Description: product?.description?:'',
 				UnitOfMeasure: product.unitOfMeasure?:'',
                 Tags: product.tagsToString()?:'',
-                UnitCost: product.pricePerUnit?:'',
+                UnitCost: hasRoleFinance?(product.pricePerUnit?:''):'',
 				Manufacturer: product.manufacturer?:'',
 				BrandName: product.brandName?:'',
 				ManufacturerCode: product.manufacturerCode?:'',
@@ -807,7 +828,7 @@ class ProductService {
 		}
 		return ReportUtil.getCsvForListOfMapEntries(rows)
     }
-	
+
 	/**
 	 * Find or create a category with the given name.
      *
@@ -827,7 +848,7 @@ class ProductService {
 		}
 		return category;
 	}
-	
+
 	/**
 	 * Find all top-level categories (e.g. children of the root category)
      *
@@ -853,9 +874,18 @@ class ProductService {
      *
 	 * @return	all tags
 	 */
-	def getAllTags() { 
+	def getAllTags() {
 		def tags = Tag.findAllByIsActive(true);
         return tags;
+	}
+
+	/**
+	 * Get all active catalogs in the database.
+	 *
+	 * @return	all tags
+	 */
+	def getAllCatalogs() {
+		return ProductCatalog.findAllByActive(true)
 	}
 
 	/**
@@ -885,7 +915,7 @@ class ProductService {
             Tag tag = Tag.load(it[0])
 			popularTags[tag] = it[1]
 		}
-		return popularTags		
+		return popularTags
 	}
 
 	def getPopularTags() {
@@ -906,7 +936,7 @@ class ProductService {
             addTagsToProduct(product, tags)
         }
     }
-	
+
 	/**
      * Add the list of tags to the given product.
      *
@@ -957,7 +987,7 @@ class ProductService {
     }
 
 
-	
+
 	/**
 	 * Delete a tag from the given product and delete the tag.
      *
@@ -965,7 +995,7 @@ class ProductService {
 	 * @param tag
 	 * @return
 	 */
-	def deleteTag(product, tag) { 
+	def deleteTag(product, tag) {
 		product.removeFromTags(tag)
 		tag.delete();
 	}
@@ -981,7 +1011,7 @@ class ProductService {
         def count = Product.executeQuery( "select count(p.productCode) from Product p where productCode = :productCode", [productCode: productCode] );
         return count ? (count[0] == 0) : false
     }
-	
+
 	/**
 	 * Generate a product identifier.
      *
@@ -1007,8 +1037,8 @@ class ProductService {
      *
      * @param url
      */
-	def downloadDocument(url) { 
-		// move code from ProductController		
+	def downloadDocument(url) {
+		// move code from ProductController
 	}
 
     /**
@@ -1022,7 +1052,7 @@ class ProductService {
     }
 
 	/**
-	 * Saves the given product 
+	 * Saves the given product
 	 * @param product
      * @param tags
      *
@@ -1050,7 +1080,7 @@ class ProductService {
 				log.error("Error occurred: " + e.message)
 				throw new ValidationException(e.message, product?.errors)
 			}
-			
+
 			// Handle attributes
 			/*
 			Map existingAtts = new HashMap();
@@ -1089,7 +1119,7 @@ class ProductService {
 				productInstance.categories.removeAll(_toBeDeleted)
 			}
 			*/
-			
+
 			//if (!product.validate()) {
 			//	throw new ValidationException("Product is not valid", product.errors)
 			//}
@@ -1119,7 +1149,7 @@ class ProductService {
      * @param product
      * @return
      */
-	def findSimilarProducts(Product product) { 
+	def findSimilarProducts(Product product) {
 		def similarProducts = []
 		/*
 		def productsInSameProductGroup = ProductGroup.findByProduct(product).products
@@ -1129,7 +1159,7 @@ class ProductService {
 		*/;
 		/*
 		def productsInSameCategory = Product.findByCategory(product.category)
-		if (productsInSameCategory) { 
+		if (productsInSameCategory) {
 			similarProducts.addAll(productsInSameCategory)
 		}*/
 		def searchTerms = product.name.split(",")
@@ -1139,7 +1169,7 @@ class ProductService {
 			similarProducts.addAll(products)
 		}
 		/*
-		if (!similarProducts) { 
+		if (!similarProducts) {
 			searchTerms = product.name.split(" ")
 			searchTerms.each {
 				similarProducts.addAll(Product.findAllByNameLike("%" + it +"%"))
@@ -1149,7 +1179,7 @@ class ProductService {
 		similarProducts.unique()
 
 		similarProducts.remove(product)
-		
+
 		return similarProducts
 	}
 

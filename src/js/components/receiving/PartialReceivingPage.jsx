@@ -3,6 +3,7 @@ import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import update from 'immutability-helper';
 import PropTypes from 'prop-types';
+import { Translate } from 'react-localize-redux';
 
 import TextField from '../form-elements/TextField';
 import SelectField from '../form-elements/SelectField';
@@ -67,19 +68,19 @@ const isAnyItemSelected = (containers) => {
 const FIELDS = {
   'origin.name': {
     type: LabelField,
-    label: 'Origin',
+    label: 'stockMovement.origin.label',
   },
   'destination.name': {
     type: LabelField,
-    label: 'Destination',
+    label: 'stockMovement.destination.label',
   },
   dateShipped: {
     type: LabelField,
-    label: 'Shipped On',
+    label: 'partialReceiving.shippedOn.label',
   },
   dateDelivered: {
     type: DateField,
-    label: 'Delivered On',
+    label: 'partialReceiving.deliveredOn.label',
     attributes: {
       showTimeSelect: true,
       dateFormat: 'MM/DD/YYYY HH:mm Z',
@@ -96,10 +97,10 @@ const FIELDS = {
     }) => (
       <div className="mb-1 text-center">
         <button type="button" className="btn btn-outline-success mr-3 btn-xs" disabled={shipmentReceived} onClick={() => autofillLines()}>
-          Autofill quantities
+          <Translate id="partialReceiving.autofillQuantities.label" />
         </button>
-        <button type="button" className="btn btn-outline-success btn-xs" disabled={saveDisabled || shipmentReceived} onClick={() => onSave()}>Save</button>
-        <button type="submit" className="btn btn-outline-primary float-right btn-form btn-xs" disabled={saveDisabled || shipmentReceived}>Next</button>
+        <button type="button" className="btn btn-outline-success btn-xs" disabled={saveDisabled || shipmentReceived} onClick={() => onSave()}><Translate id="default.button.save.label" /></button>
+        <button type="submit" className="btn btn-outline-primary float-right btn-form btn-xs" disabled={saveDisabled || shipmentReceived}><Translate id="default.button.next.label" /></button>
       </div>),
   },
   containers: {
@@ -117,7 +118,8 @@ const FIELDS = {
     fields: {
       autofillLine: {
         fieldKey: '',
-        fixedWidth: '50px',
+        label: '',
+        flexWidth: '0',
         type: ({
           // eslint-disable-next-line react/prop-types
           subfield, parentIndex, rowIndex, autofillLines, fieldValue, shipmentReceived,
@@ -139,8 +141,8 @@ const FIELDS = {
       'parentContainer.name': {
         fieldKey: '',
         type: params => (!params.subfield ? <LabelField {...params} /> : null),
-        label: 'Pallet',
-        flexWidth: '8',
+        label: 'stockMovement.pallet.label',
+        flexWidth: '0.8',
         attributes: {
           formatValue: fieldValue => (_.get(fieldValue, 'parentContainer.name') || _.get(fieldValue, 'container.name') || 'Unpacked'),
         },
@@ -148,20 +150,21 @@ const FIELDS = {
       'container.name': {
         fieldKey: '',
         type: params => (!params.subfield ? <LabelField {...params} /> : null),
-        label: 'Box',
-        flexWidth: '6',
+        label: 'stockMovement.box.label',
+        flexWidth: '0.8',
         attributes: {
           formatValue: fieldValue => (_.get(fieldValue, 'parentContainer.name') ? _.get(fieldValue, 'container.name') || '' : ''),
         },
       },
       'product.productCode': {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'Code',
+        label: 'stockMovement.code.label',
+        flexWidth: '0.8',
       },
       'product.name': {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'Name',
-        flexWidth: '24',
+        label: 'stockMovement.name.label',
+        flexWidth: '3.3',
         attributes: {
           className: 'text-left ml-1',
           showValueTooltip: true,
@@ -169,12 +172,13 @@ const FIELDS = {
       },
       lotNumber: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'Lot/Serial No.',
+        label: 'stockMovement.lotSerialNo.label',
+        flexWidth: '1',
       },
       expirationDate: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'Expiration Date',
-        fixedWidth: '130px',
+        label: 'stockMovement.expirationDate.label',
+        flexWidth: '1.5',
       },
       binLocation: {
         type: params => (
@@ -189,8 +193,8 @@ const FIELDS = {
               className="select-xs"
             />),
         fieldKey: '',
-        fixedWidth: '150px',
-        label: 'Bin Location',
+        flexWidth: '1.7',
+        label: 'stockMovement.binLocation.label',
         getDynamicAttr: ({
           bins, hasBinLocationSupport, shipmentReceived, fieldValue,
         }) => ({
@@ -204,7 +208,8 @@ const FIELDS = {
       'recipient.id': {
         type: params => (params.subfield ? <SelectField {...params} /> : null),
         fieldKey: '',
-        label: 'Recipient',
+        flexWidth: '1.5',
+        label: 'stockMovement.recipient.label',
         getDynamicAttr: ({ users, shipmentReceived, fieldValue }) => ({
           options: users,
           disabled: shipmentReceived || isReceived(true, fieldValue),
@@ -212,24 +217,24 @@ const FIELDS = {
       },
       quantityShipped: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'Shipped',
-        fixedWidth: '75px',
+        label: 'partialReceiving.shipped.label',
+        flexWidth: '0.8',
         attributes: {
           formatValue: value => (value ? (value.toLocaleString('en-US')) : value),
         },
       },
       quantityReceived: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'Received',
-        fixedWidth: '75px',
+        label: 'partialReceiving.received.label',
+        flexWidth: '0.8',
         attributes: {
           formatValue: value => (value ? value.toLocaleString('en-US') : '0'),
         },
       },
       quantityRemaining: {
         type: params => (params.subfield ? <LabelField {...params} /> : null),
-        label: 'To receive',
-        fixedWidth: '75px',
+        label: 'partialReceiving.toReceive.label',
+        flexWidth: '0.8',
         fieldKey: '',
         getDynamicAttr: ({ fieldValue, shipmentReceived }) => ({
           className: _.toInteger(fieldValue.quantityRemaining) < 0 && !shipmentReceived
@@ -251,8 +256,8 @@ const FIELDS = {
       quantityReceiving: {
         type: params => (params.subfield ? <TextField {...params} /> : null),
         fieldKey: '',
-        label: 'Receiving Now',
-        fixedWidth: '85px',
+        label: 'partialReceiving.receivingNow.label',
+        flexWidth: '1',
         getDynamicAttr: ({ shipmentReceived, fieldValue }) => ({
           disabled: shipmentReceived || isReceived(true, fieldValue),
         }),
@@ -260,10 +265,11 @@ const FIELDS = {
       edit: {
         type: params => (params.subfield ? <EditLineModal {...params} /> : null),
         fieldKey: '',
-        fixedWidth: '85px',
+        label: '',
+        flexWidth: '1',
         attributes: {
-          btnOpenText: 'Edit Line',
-          title: 'Edit Line',
+          btnOpenText: 'partialReceiving.editLine.label',
+          title: 'partialReceiving.editLine.label',
           className: 'btn btn-outline-primary',
         },
         getDynamicAttr: ({
@@ -279,8 +285,8 @@ const FIELDS = {
       comment: {
         type: params => (params.subfield ? <TextField {...params} /> : null),
         fieldKey: '',
-        label: 'Comment',
-        fixedWidth: '110px',
+        label: 'partialReceiving.comment.label',
+        flexWidth: '1.3',
       },
     },
   },
@@ -291,10 +297,10 @@ const FIELDS = {
     }) => (
       <div className="my-1 text-center">
         <button type="button" className="btn btn-outline-success mr-3 btn-xs" disabled={shipmentReceived} onClick={() => autofillLines()}>
-          Autofill quantities
+          <Translate id="partialReceiving.autofillQuantities.label" />
         </button>
-        <button type="button" className="btn btn-outline-success btn-xs" disabled={saveDisabled || shipmentReceived} onClick={() => onSave()}>Save</button>
-        <button type="submit" className="btn btn-outline-primary float-right btn-form btn-xs" disabled={saveDisabled || shipmentReceived}>Next</button>
+        <button type="button" className="btn btn-outline-success btn-xs" disabled={saveDisabled || shipmentReceived} onClick={() => onSave()}><Translate id="default.button.save.label" /></button>
+        <button type="submit" className="btn btn-outline-primary float-right btn-form btn-xs" disabled={saveDisabled || shipmentReceived}><Translate id="default.button.next.label" /></button>
       </div>),
   },
 };

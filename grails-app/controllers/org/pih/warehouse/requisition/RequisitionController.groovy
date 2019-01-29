@@ -40,24 +40,16 @@ class RequisitionController {
     def list = {
         def user = User.get(session?.user?.id)
         def location = Location.get(session?.warehouse?.id)
+
+        params.origin = Location.get(session?.warehouse?.id)
         def requisition = new Requisition(params)
-        requisition.destination = Location.get(session?.warehouse?.id)
-        //def startTime = System.currentTimeMillis()
 
         // Requisitions to display in the table
         def requisitions = requisitionService.getRequisitions(requisition, params)
-        def requisitionStatistics = requisitionService.getRequisitionStatistics(requisition.destination, null, user)
+        def requisitionStatistics = requisitionService.getRequisitionStatistics(null, requisition.origin, user)
 
         render(view:"list", model:[requisitions: requisitions, requisitionStatistics:requisitionStatistics])
     }
-
-	def listStock = {
-        def requisitions = []
-        def destination = Location.get(session.warehouse.id)
-		//requisitions = Requisition.findAllByIsTemplate(true)
-        requisitions = Requisition.findAllByIsTemplateAndDestination(true, destination)
-		render(view:"listStock", model:[requisitions: requisitions])		
-	}
 
     def chooseTemplate = {
         render(view:"chooseTemplate")
@@ -651,7 +643,7 @@ class RequisitionController {
         def requisitionName =
             [
                 requisitionType,
-                requisition.origin,
+                requisition.destination,
                 requisition.recipientProgram,
                 commodityClass,
                 requisition?.dateRequested?.format("MMM dd yyyy")
